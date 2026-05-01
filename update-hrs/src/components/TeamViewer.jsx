@@ -132,12 +132,15 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
       email: account.email, name: account.email.split('@')[0], sheetId: account.sheetId, company: b.company || 'Unknown',
       role: account.role, clientName: account.clientName || '', coAdminName: account.coAdminName || '', 
       leaderName: account.leaderName || '', hasLeader, displayLeaderName, excelMissing,
+      
+      isDisabled: account.isDisabled || false, // 💡 ADD THIS LINE
+
       weeklyTotals, monthMints, monthScnds, decimalHours, hitTarget, clientRateUSD, clientPaymentUSD, clientRateINR, clientPaymentINR, 
       finalLeaderRate, leaderPayment, finalRaterRate, raterPayment, leaderMarginTotal: leaderPayment - raterPayment, coAdminProfit: clientPaymentINR - leaderPayment 
     };
   }, [allUsers, exchangeRate]);
 
-  // INSTANT LOAD FROM DB
+  // INSTANT LOAD FROM DB (MERGE MODE)
   const loadFromDatabase = useCallback(async () => {
     if (!selectedManager || teamAccounts.length === 0) return;
     
@@ -152,10 +155,20 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
     });
 
     const instantRows = await Promise.all(dbPromises);
-    setTeamData(instantRows);
+    
+    // 💡 THE FIX: Safely merge newly discovered accounts onto the screen instantly
+    setTeamData(prevData => {
+      const newArray = [...prevData];
+      instantRows.forEach(row => {
+        const exists = newArray.some(r => r.email === row.email);
+        if (!exists) newArray.push(row);
+      });
+      return newArray;
+    });
+
     setIsInitialLoad(false);
   }, [selectedManager, currentMonthKey, teamAccounts, buildRowData]);
-
+  // BACKGROUND SYNC (Catches the 404 Error from Backend)
   // BACKGROUND SYNC (Catches the 404 Error from Backend)
   const syncWithExcel = useCallback(async () => {
     if (!selectedManager || teamAccounts.length === 0 || isFetchingRef.current) return;
@@ -180,11 +193,27 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
           const docId = `${account.email}_${currentMonthKey}`;
           const docRef = doc(db, 'monthly_timesheets', docId);
 
+          // 💡 THE NEW FIX: If the account is disabled in Firebase, skip Excel completely!
+          // We just load whatever is currently saved in the database and freeze it.
+          if (account.isDisabled) {
+             const snap = await getDoc(docRef);
+             if (snap.exists()) {
+                return buildRowData(account, snap.data(), false);
+             } else {
+                return buildRowData(account, null, false);
+             }
+          }
+
           try {
             const response = await fetch(`http://localhost:5000/api/get-hrs?accountName=${account.email}&monthKey=${currentMonthKey}&sheetId=${account.sheetId}`);
             
             let data;
             try { data = await response.json(); } catch (e) { throw new Error("API Parse Error"); }
+
+            // Check for the new Disabled lock from the backend
+            if (response.status === 403 || data.error === 'DISABLED') {
+               throw new Error("DISABLED");
+            }
 
             if (response.status === 404 || data.error === 'SHEET_MISSING') {
               throw new Error("SHEET_MISSING");
@@ -227,12 +256,15 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
                setMissingSheets(prev => ({ ...prev, [account.email]: true }));
             }
 
+            // Fallback to DB safely
             const snap = await getDoc(docRef);
             if (snap.exists() && snap.data().weeklyTotals) {
-               try { await setDoc(docRef, { excelMissing: true }, { merge: true }); } catch(e){}
-               return buildRowData(account, snap.data(), true);
+               if (error.message === "SHEET_MISSING") {
+                  try { await setDoc(docRef, { excelMissing: true }, { merge: true }); } catch(e){}
+               }
+               return buildRowData(account, snap.data(), error.message === "SHEET_MISSING");
             } else {
-               return buildRowData(account, null, true);
+               return buildRowData(account, null, error.message === "SHEET_MISSING");
             }
           }
         });
@@ -256,7 +288,9 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
   // eslint-disable-next-line
   }, [selectedManager, currentMonthKey, teamAccounts, buildRowData]);
 
-  useEffect(() => {
+ useEffect(() => {
+    if (allUsers.length === 0) return;
+
     if (!selectedManager || teamAccounts.length === 0) {
       setTeamData([]);
       setIsInitialLoad(false);
@@ -264,12 +298,14 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
     }
 
     const runSequence = async () => {
-      if (isInitialLoad) await loadFromDatabase(); 
+      // 💡 THE FIX: Always run the DB loader when the team changes to catch missing accounts!
+      await loadFromDatabase(); 
       syncWithExcel(); 
     };
+
     runSequence();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedManager, currentMonthKey, syncTrigger, teamAccounts.length]); 
+  }, [selectedManager, currentMonthKey, syncTrigger, teamAccounts.length, allUsers.length]);
 
   // 💡 NEW: Custom Alert Restore Function
   const handleCreateNewSheet = (accountEmail, sheetId, restoreBackup = false) => {

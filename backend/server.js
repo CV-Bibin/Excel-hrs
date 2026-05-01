@@ -148,7 +148,6 @@ app.get('/api/get-hrs', async (req, res) => {
 
     const doc = new GoogleSpreadsheet(sheetId, getAuth());
     
-    // 💡 FIX 1: Check if the entire Excel file is deleted from Google Drive
     try {
       await doc.loadInfo();
     } catch (err) {
@@ -156,7 +155,12 @@ app.get('/api/get-hrs', async (req, res) => {
       return res.status(404).json({ error: 'SHEET_MISSING', message: 'Spreadsheet file deleted.' });
     }
 
-    // 💡 FIX 2: Check if the specific Month Tab is missing (NO AUTO-BUILDING!)
+    // 💡 THE NEW FIX: Stop reading if the file has been renamed to [DISABLED]
+    if (doc.title.startsWith('[DISABLED]')) {
+        console.warn(`[GET-HRS] Blocked sync for disabled account ${accountName}`);
+        return res.status(403).json({ error: 'DISABLED', message: 'Account is locked.' });
+    }
+
     const sheet = Object.values(doc.sheetsByTitle).find(s => s.title.toLowerCase() === monthKey.toLowerCase());
     if (!sheet) {
       console.warn(`[GET-HRS] Month tab missing for ${accountName}`);
@@ -245,6 +249,11 @@ app.post('/api/update-hrs', async (req, res) => {
     
     const doc = new GoogleSpreadsheet(sheetId, getAuth());
     await doc.loadInfo();
+
+    // 💡 THE LOCK: Reject the save if the file is disabled!
+    if (doc.title.startsWith('[DISABLED]')) {
+        return res.status(403).json({ error: 'This account is DISABLED. Data syncing is locked.' });
+    }
     
     const sheet = Object.values(doc.sheetsByTitle).find(s => s.title.toLowerCase() === monthKey.toLowerCase());
     
@@ -276,6 +285,44 @@ app.post('/api/update-hrs', async (req, res) => {
 
   } catch (error) {
     console.error("❌ UPDATE CRASHED:", error.message);
+    res.status(500).json({ error: `Server failed: ${error.message}` });
+  }
+});
+
+app.post('/api/modify-hr', async (req, res) => {
+  try {
+    const { monthKey, date, rowIndex, action, mints, scnds, sheetId } = req.body;
+    const doc = new GoogleSpreadsheet(sheetId, getAuth());
+    await doc.loadInfo();
+
+    // 💡 THE LOCK: Reject the edit if the file is disabled!
+    if (doc.title.startsWith('[DISABLED]')) {
+        return res.status(403).json({ error: 'This account is DISABLED. Modifications are locked.' });
+    }
+    
+    const sheet = Object.values(doc.sheetsByTitle).find(s => s.title.toLowerCase() === monthKey.toLowerCase());
+    if (!sheet) return res.status(404).json({ error: `Could not find the sheet tab for ${monthKey}` });
+
+    try {
+        await sheet.loadCells('A1:CQ30');
+    } catch (cellError) {
+        return res.status(500).json({ error: 'Google Sheet template is too small.' });
+    }
+    
+    const [day, month, year] = date.split('/');
+    const targetCol = getColumnIndex(parseInt(day), parseInt(month)-1, parseInt(year));
+
+    if (action === 'delete') {
+        sheet.getCell(rowIndex, targetCol).value = null;
+        sheet.getCell(rowIndex, targetCol + 1).value = null;
+    } else if (action === 'edit') {
+        sheet.getCell(rowIndex, targetCol).value = mints !== '' ? Number(mints) : null;
+        sheet.getCell(rowIndex, targetCol + 1).value = scnds !== '' ? Number(scnds) : null;
+    }
+    await sheet.saveUpdatedCells();
+    res.status(200).json({ message: 'Modified!' });
+  } catch (error) {
+    console.error("❌ MODIFY CRASHED:", error.message);
     res.status(500).json({ error: `Server failed: ${error.message}` });
   }
 });
@@ -420,6 +467,40 @@ cron.schedule('0 18 * * *', async () => {
     scheduled: true,
     timezone: "Asia/Kolkata" 
 });
+
+
+app.post('/api/toggle-sheet-lock', async (req, res) => {
+  try {
+    const { sheetId, lock } = req.body;
+    if (!sheetId) return res.status(400).json({ error: 'No sheet ID' });
+
+    const doc = new GoogleSpreadsheet(sheetId, getAuth());
+    await doc.loadInfo();
+
+    // 💡 THE FIX: Rename the entire file in Google Drive to show it is disabled.
+    // This is 100% supported by the library and won't break your TeamViewer month tabs!
+    const currentTitle = doc.title;
+    let newTitle = currentTitle;
+
+    if (lock && !currentTitle.startsWith('[DISABLED]')) {
+        newTitle = `[DISABLED] ${currentTitle}`;
+    } else if (!lock && currentTitle.startsWith('[DISABLED]')) {
+        newTitle = currentTitle.replace('[DISABLED] ', '');
+    }
+
+    // Only update if the title actually needs to change
+    if (newTitle !== currentTitle) {
+        await doc.updateProperties({ title: newTitle });
+    }
+    
+    res.status(200).json({ message: `Sheet locked status: ${lock}` });
+  } catch (error) {
+    console.error("Failed to toggle sheet lock:", error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 
 // ==========================================
 // 9. START THE SERVER

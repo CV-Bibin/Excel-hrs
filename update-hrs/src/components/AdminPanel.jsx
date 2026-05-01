@@ -112,10 +112,10 @@ export default function AdminPanel() {
         role: role,
         sheetId: finalSheetId,
         clientName: selectedClient,
-        // 💡 ONLY save Co-Admin or Leader names if the account actually has that role!
         coAdminName: role === 'co-admin' ? selectedCoAdmin : '',
         leaderName: role === 'leader' ? selectedLeader : '', 
         managers: [], 
+        isDisabled: false, // 💡 NEW: Initialize account as active
         createdAt: new Date().toISOString()
       });
 
@@ -151,7 +151,6 @@ export default function AdminPanel() {
         role: editRole, 
         sheetId: finalSheetId,
         clientName: editClient,
-        // 💡 ONLY save Co-Admin or Leader names if the account actually has that role!
         coAdminName: editRole === 'co-admin' ? editCoAdmin : '',
         leaderName: editRole === 'leader' ? editLeader : '' 
       });
@@ -162,8 +161,38 @@ export default function AdminPanel() {
     }
   };
 
+  // 💡 NEW: Function to Disable/Enable a user and lock their sheet
+  const handleToggleDisable = async (user) => {
+    const newStatus = !user.isDisabled;
+    const actionText = newStatus ? 'DISABLE' : 'ENABLE';
+    
+    if (!window.confirm(`Are you sure you want to ${actionText} access for ${user.email}?`)) return;
+
+    try {
+      // 1. Update Firebase to block App Login
+      await updateDoc(doc(db, 'users', user.email), { isDisabled: newStatus });
+
+      // 2. Tell the Node.js backend to lock the Google Sheet
+      if (user.sheetId && user.sheetId.length > 5) {
+        try {
+           await fetch('http://localhost:5000/api/toggle-sheet-lock', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ sheetId: user.sheetId, lock: newStatus })
+           });
+        } catch (serverErr) {
+           console.warn("Backend sheet locking failed, but Firebase account is disabled.", serverErr);
+        }
+      }
+
+      fetchData();
+    } catch (error) {
+      alert(`Failed to ${actionText.toLowerCase()} user.`);
+    }
+  };
+
   const handleDeleteUser = async (email) => {
-    if (!window.confirm(`CRITICAL WARNING: Are you sure you want to delete ${email}'s access?`)) return;
+    if (!window.confirm(`CRITICAL WARNING: Are you sure you want to completely delete ${email}?`)) return;
     try {
       await deleteDoc(doc(db, 'users', email));
       fetchData(); 
@@ -209,17 +238,14 @@ export default function AdminPanel() {
                 <option value="admin">Admin</option>
               </select>
 
-              {/* 💡 CONDITIONAL DROPDOWNS: Only show what is needed for the selected role */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#f8f9fa', padding: '10px', borderRadius: '4px', border: '1px solid #eee' }}>
                 <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#666' }}>Assignments:</div>
                 
-                {/* Client Dropdown (Always Visible) */}
                 <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}>
                   <option value="">- Select Client -</option>
                   {clientList.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
                 
-                {/* Co-Admin Dropdown (Only for Co-Admins) */}
                 {role === 'co-admin' && (
                   <select value={selectedCoAdmin} onChange={e => setSelectedCoAdmin(e.target.value)} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}>
                     <option value="">- Tag Co-Admin Name -</option>
@@ -227,7 +253,6 @@ export default function AdminPanel() {
                   </select>
                 )}
 
-                {/* Leader Dropdown (Only for Leaders) */}
                 {role === 'leader' && (
                   <select value={selectedLeader} onChange={e => setSelectedLeader(e.target.value)} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}>
                     <option value="">- Tag Leader Name -</option>
@@ -248,7 +273,7 @@ export default function AdminPanel() {
             <h3 style={{ marginTop: 0, fontSize: '16px', color: '#1a73e8' }}>Manage Dropdown Lists</h3>
             
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#555', marginBottom: '8px' }}>Client List (Used for Clients & Co-Admins)</div>
+              <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#555', marginBottom: '8px' }}>Client List</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
                 {clientList.map(c => (
                    <div key={c} style={{ fontSize: '11px', backgroundColor: '#e8f0fe', color: '#1a73e8', padding: '4px 8px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -296,11 +321,15 @@ export default function AdminPanel() {
               {usersList.map((user) => {
                 const isEditing = editingEmail === user.email;
                 return (
-                  <tr key={user.email} style={{ backgroundColor: isEditing ? '#f8f9fa' : 'transparent' }}>
+                  // 💡 NEW: Grey out the row if the user is disabled
+                  <tr key={user.email} style={{ backgroundColor: isEditing ? '#f8f9fa' : 'transparent', opacity: user.isDisabled ? 0.5 : 1 }}>
                     
-                    {/* COL 1: Email & Role */}
                     <td style={tableCellStyle}>
-                      <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>{user.email}</div>
+                      <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>
+                        {user.email} 
+                        {/* 💡 NEW: Disabled Badge */}
+                        {user.isDisabled && <span style={{ marginLeft: '8px', color: '#d32f2f', fontSize: '10px', backgroundColor: '#fce8e6', padding: '2px 6px', borderRadius: '4px' }}>🚫 DISABLED</span>}
+                      </div>
                       {isEditing ? (
                         <select value={editRole} onChange={(e) => setEditRole(e.target.value)} style={{ padding: '4px', borderRadius: '4px', fontSize: '12px' }}>
                           <option value="rater">Rater</option>
@@ -315,7 +344,6 @@ export default function AdminPanel() {
                       )}
                     </td>
 
-                    {/* 💡 COL 2: CONDITIONAL ASSIGNMENTS DISPLAY */}
                     <td style={tableCellStyle}>
                       {isEditing ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -324,7 +352,6 @@ export default function AdminPanel() {
                             {clientList.map(c => <option key={c} value={c}>{c}</option>)}
                           </select>
                           
-                          {/* Only show Co-Admin Edit if the role is Co-Admin */}
                           {editRole === 'co-admin' && (
                             <select value={editCoAdmin} onChange={e => setEditCoAdmin(e.target.value)} style={{ padding: '4px', borderRadius: '4px', fontSize: '12px', border: '1px solid #ccc' }}>
                               <option value="">- Tag Co-Admin Name -</option>
@@ -332,7 +359,6 @@ export default function AdminPanel() {
                             </select>
                           )}
                           
-                          {/* Only show Leader Edit if the role is Leader */}
                           {editRole === 'leader' && (
                             <select value={editLeader} onChange={e => setEditLeader(e.target.value)} style={{ padding: '4px', borderRadius: '4px', fontSize: '12px', border: '1px solid #ccc' }}>
                               <option value="">- Tag Leader Name -</option>
@@ -343,13 +369,9 @@ export default function AdminPanel() {
                       ) : (
                         <div style={{ fontSize: '12px', color: '#555', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           <div><strong style={{color: '#1a73e8'}}>Client:</strong> {user.clientName || <span style={{color:'#ccc'}}>None</span>}</div>
-                          
-                          {/* Only show Co-Admin label if the user is actually a Co-Admin */}
                           {user.role === 'co-admin' && (
                             <div><strong style={{color: '#e65100'}}>Co-Admin Name:</strong> {user.coAdminName || <span style={{color:'#ccc'}}>None</span>}</div>
                           )}
-                          
-                          {/* Only show Leader label if the user is actually a Leader */}
                           {user.role === 'leader' && (
                             <div><strong style={{color: '#7b1fa2'}}>Leader Name:</strong> {user.leaderName || <span style={{color:'#ccc'}}>None</span>}</div>
                           )}
@@ -357,7 +379,6 @@ export default function AdminPanel() {
                       )}
                     </td>
 
-                    {/* COL 3: Sheet */}
                     <td style={tableCellStyle}>
                       {isEditing ? (
                         <input type="text" value={editSheetId} onChange={(e) => setEditSheetId(e.target.value)} placeholder="Paste new URL" style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ccc', fontSize: '12px' }} />
@@ -368,18 +389,25 @@ export default function AdminPanel() {
                       )}
                     </td>
 
-                    {/* COL 4: Actions */}
                     <td style={{ ...tableCellStyle, whiteSpace: 'nowrap' }}>
                       {isEditing ? (
                         <div style={{ display: 'flex', gap: '6px', flexDirection: 'column' }}>
-                          <button onClick={handleUpdateUser} style={{ padding: '6px', backgroundColor: '#34a853', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>Save Changes</button>
+                          <button onClick={handleUpdateUser} style={{ padding: '6px', backgroundColor: '#34a853', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>Save</button>
                           <button onClick={() => setEditingEmail(null)} style={{ padding: '6px', backgroundColor: '#ccc', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Cancel</button>
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => startEditing(user)} style={{ padding: '6px 12px', backgroundColor: '#e8eaed', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Edit</button>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button onClick={() => startEditing(user)} style={{ padding: '6px 10px', backgroundColor: '#e8eaed', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Edit</button>
+                          
+                          {/* 💡 NEW: Disable/Enable Button */}
                           {user.email !== 'admin@telus.com' && (
-                            <button onClick={() => handleDeleteUser(user.email)} style={{ padding: '6px 12px', backgroundColor: '#fce8e6', color: '#c5221f', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Delete</button>
+                            <button onClick={() => handleToggleDisable(user)} style={{ padding: '6px 10px', backgroundColor: user.isDisabled ? '#34a853' : '#f57c00', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+                              {user.isDisabled ? 'Enable' : 'Disable'}
+                            </button>
+                          )}
+                          
+                          {user.email !== 'admin@telus.com' && (
+                            <button onClick={() => handleDeleteUser(user.email)} style={{ padding: '6px 10px', backgroundColor: '#fce8e6', color: '#c5221f', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Delete</button>
                           )}
                         </div>
                       )}
