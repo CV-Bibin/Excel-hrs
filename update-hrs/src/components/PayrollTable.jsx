@@ -705,65 +705,40 @@ export default function PayrollTable({
       }}
     >
       <thead>
-        <tr>
-          <th style={{ ...headerStyle, backgroundColor: "#fff" }}></th>
-          <th
-            style={{
-              ...headerStyle,
-              backgroundColor: "#f1f3f4",
-              textAlign: "left",
-            }}
-          >
-            Account Details
-          </th>
-          <th colSpan="6" style={{ ...headerStyle, backgroundColor: "#fff" }}>
-            Weekly Time Breakdown
-          </th>
-          <th style={{ ...headerStyle, backgroundColor: "#fce8b2" }}>
-            Mnts / Scnds
-          </th>
-          <th
-            style={{ ...headerStyle, backgroundColor: "#fff", color: "#555" }}
-          >
-            Decimal Hrs
-          </th>
-          {showClientPay && (
-            <>
-              <th style={{ ...headerStyle, backgroundColor: "#e8f0fe" }}>
-                Client Rate (₹)
-              </th>
-              <th style={{ ...headerStyle, backgroundColor: "#bbdefb" }}>
-                Client Total
-              </th>
-            </>
-          )}
-          {showLeaderPay && (
-            <>
-              <th style={{ ...headerStyle, backgroundColor: "#f3e5f5" }}>
-                Leader Rate
-              </th>
-              <th style={{ ...headerStyle, backgroundColor: "#e1bee7" }}>
-                Leader Total
-              </th>
-            </>
-          )}
-          {showRaterPay && (
-            <>
-              <th style={{ ...headerStyle, backgroundColor: "#fff3e0" }}>
-                Rater Rate
-              </th>
-              <th style={{ ...headerStyle, backgroundColor: "#ffe0b2" }}>
-                Rater Total
-              </th>
-            </>
-          )}
-          {showLeaderProfit && (
-            <th style={{ ...headerStyle, backgroundColor: "#e6f4ea" }}>
-              Leader Profit Margin
-            </th>
-          )}
-        </tr>
-      </thead>
+  <tr>
+    <th style={headerStyle}>Sheet</th>
+    <th style={{ ...headerGreen, textAlign: "left" }}>Account Details</th>
+    <th style={headerStyle}>week 1 hrs</th>
+    <th style={headerStyle}>week 2 hrs</th>
+    <th style={headerStyle}>week 3 hrs</th>
+    <th style={headerStyle}>week 4 hrs</th>
+    <th style={headerStyle}>week 5 hrs</th>
+    <th style={headerStyle}>week 6 hrs</th>
+    <th style={headerYellow}>Monthly Hrs</th>
+    <th style={headerGreyText}>decimal hrs</th>
+    {showClientPay && (
+      <>
+        <th style={headerGreyText}>Client Rate (₹)</th>
+        <th style={{ ...headerStyle, backgroundColor: "#bbdefb" }}>Client Total</th>
+      </>
+    )}
+    {showLeaderPay && (
+      <>
+        <th style={headerGreyText}>Leader Rate</th>
+        <th style={{ ...headerStyle, backgroundColor: "#e1bee7" }}>Leader Total</th>
+      </>
+    )}
+    {showRaterPay && (
+      <>
+        <th style={headerGreyText}>Rater Rate</th>
+        <th style={headerOrange}>Rater Total</th>
+      </>
+    )}
+    {showLeaderProfit && (
+      <th style={{ ...headerStyle, backgroundColor: "#e6f4ea" }}>Profit Margin</th>
+    )}
+  </tr>
+</thead>
       <tbody>
         {Object.entries(coreGroups).map(([groupName, rows]) => {
           if (rows.length === 0) return null;
@@ -995,15 +970,9 @@ export default function PayrollTable({
                         {formatHMS(w.mints, w.scnds)}
                       </td>
                     ))}
-                    <td
-                      style={{
-                        ...cellStyle,
-                        color: monthColor,
-                        fontWeight: "bold"
-                      }}
-                    >
-                      {formatHMS(row.monthMints, row.monthScnds)}
-                    </td>
+                   <td style={{ ...cellStyle, backgroundColor: '#fff9c4', color: monthColor, fontWeight: 'bold' }}>
+  {formatHMS(row.monthMints, row.monthScnds)}
+</td>
                     <td
                       style={{
                         ...cellStyle,
