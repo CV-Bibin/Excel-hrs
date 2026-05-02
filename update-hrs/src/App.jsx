@@ -10,6 +10,7 @@ import AdminPanel from './components/AdminPanel';
 import TeamViewer from './components/TeamViewer'; 
 import TeamAssignments from './components/TeamAssignments'; 
 import BillingSettings from './components/BillingSettings';
+import CoAdminSettings from './components/CoAdminSettings';
 
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
@@ -147,12 +148,30 @@ function App() {
             {hasSheet && (
               <button onClick={() => setActiveTab('personal')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'personal' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'personal' ? 'white' : '#555' }}>My Data Entry</button>
             )}
+
+            {/* 💡 MOVED TO THE END & CHANGED TO ICON */}
+            {userRole === 'co-admin' && (
+              <button 
+                title="Accounts & Settings"
+                onClick={() => setActiveTab('coadmin-settings')} 
+                style={{ 
+                  padding: '8px 14px', 
+                  border: 'none', 
+                  borderRadius: '20px', 
+                  cursor: 'pointer', 
+                  fontSize: '16px', 
+                  backgroundColor: activeTab === 'coadmin-settings' ? '#1a73e8' : '#f1f3f4', 
+                  color: activeTab === 'coadmin-settings' ? 'white' : '#555' 
+                }}
+              >
+                ⚙️
+              </button>
+            )}
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           
-          {/* 💡 NEW: Layout matches your image (Email bold on top, Role + Name below) */}
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontWeight: 'bold', color: '#333', fontSize: '16px' }}>{currentUser}</div>
             <div style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', marginTop: '2px' }}>
@@ -175,6 +194,13 @@ function App() {
         {activeTab === 'admin' && (
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <AdminPanel />
+          </div>
+        )}
+
+        {/* Render the Co-Admin Settings Page */}
+        {activeTab === 'coadmin-settings' && (
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <CoAdminSettings currentUserEmail={currentUser} />
           </div>
         )}
 
