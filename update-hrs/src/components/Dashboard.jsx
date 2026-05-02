@@ -1,10 +1,27 @@
 import React from 'react';
 
 const HOURLY_PAY_RATE = 160; 
-const weekColors = ['#fff3e0', '#e8f5e9', '#e3f2fd', '#f3e5f5', '#e0f7fa', '#fff9c4'];
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; 
 
-export default function Dashboard({ gridData, isLoading, accountName, spreadsheetId }) {
+const getWeekColor = (mints, scnds) => {
+  const hrs = mints / 60 + scnds / 3600;
+  if (hrs === 0) return "#d32f2f"; 
+  if (hrs > 20) return "#1976d2";  
+  return "#333";                   
+};
+
+const getMonthColor = (decimalHours) => {
+  if (decimalHours < 5) return "#d32f2f";  
+  if (decimalHours > 40) return "#2e7d32"; 
+  if (decimalHours > 20) return "#1976d2"; 
+  return "#333";                           
+};
+
+export default function Dashboard({ 
+  gridData, isLoading, accountName, spreadsheetId,
+  isDisabled = false, 
+  excelMissing = false 
+}) {
   if (isLoading || !gridData || gridData.length === 0) return null;
 
   const formatTime = (mints, scnds) => {
@@ -33,10 +50,13 @@ export default function Dashboard({ gridData, isLoading, accountName, spreadshee
     calendarDays[firstDayOfWeek + parseInt(dayStr) - 1] = dayData; 
   });
 
-  const weeks = [];
+  let weeks = [];
   for (let i = 0; i < totalWeeksNeeded; i++) {
     weeks.push(calendarDays.slice(i * 7, i * 7 + 7));
   }
+
+  // SMART WEEK FILTERING: Only keep weeks that have at least one valid date in them
+  weeks = weeks.filter(week => week.some(day => day !== null));
 
   let monthSumMints = 0;
   let monthSumScnds = 0;
@@ -46,9 +66,10 @@ export default function Dashboard({ gridData, isLoading, accountName, spreadshee
   });
   
   const monthlyTotalStr = formatTime(monthSumMints, monthSumScnds);
-  const totalPayment = (calculateDecimalHours(monthSumMints, monthSumScnds) * HOURLY_PAY_RATE).toFixed(2);
+  const monthlyDecimalHrs = calculateDecimalHours(monthSumMints, monthSumScnds);
+  const totalPayment = (monthlyDecimalHrs * HOURLY_PAY_RATE).toFixed(2);
 
-  const getWeekTotal = (week) => {
+  const getWeekRawTime = (week) => {
     let wMints = 0; let wScnds = 0;
     week.forEach(day => {
       if (day) {
@@ -56,113 +77,131 @@ export default function Dashboard({ gridData, isLoading, accountName, spreadshee
         wScnds += day.totalScnds || 0;
       }
     });
-    return formatTime(wMints, wScnds);
+    return { mints: wMints, scnds: wScnds };
+  };
+
+  const getWeekTotal = (week) => {
+    const { mints, scnds } = getWeekRawTime(week);
+    return formatTime(mints, scnds);
   };
 
   const tableStyle = { width: '100%', borderCollapse: 'collapse', textAlign: 'center', whiteSpace: 'nowrap', margin: '0', fontFamily: 'Arial, sans-serif' };
-  const cellStyle = { border: '1px solid #b3e5fc', padding: '8px' };
-  const valueStyle = { padding: '10px 2px', fontSize: '15px', color: '#1a73e8', fontWeight: 'bold' };
+  const cellStyle = { border: '1px solid #e0e0e0', padding: '10px 8px' }; 
+  const valueStyle = { fontSize: '15px', color: '#1a73e8', fontWeight: 'bold' };
 
   return (
-    <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+    <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #eee' }}>
-        <h3 style={{ margin: 0, color: '#333', fontSize: '20px' }}>Excel Report View</h3>
-        
+      {/* 1. Header & Actions */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h3 style={{ margin: 0, color: '#333', fontSize: '22px' }}>Dashboard Overview</h3>
         {spreadsheetId && (
-          <button onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${spreadsheetId}`, '_blank')} style={{ padding: '8px 20px', cursor: 'pointer', border: 'none', borderRadius: '4px', backgroundColor: '#34a853', color: 'white', fontWeight: 'bold', fontSize: '15px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <button onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${spreadsheetId}`, '_blank')} style={{ padding: '10px 20px', cursor: 'pointer', border: 'none', borderRadius: '6px', backgroundColor: '#1a73e8', color: 'white', fontWeight: 'bold', fontSize: '14px', boxShadow: '0 2px 4px rgba(26,115,232,0.3)', transition: 'background-color 0.2s' }}>
             📊 Open Google Sheet
           </button>
         )}
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      {/* 2. Warning Banners */}
+      {isDisabled && (
+        <div style={{ padding: '15px', backgroundColor: '#fdecea', color: '#d32f2f', borderRadius: '8px', marginBottom: '20px', fontSize: '15px', textAlign: 'center', fontWeight: 'bold', border: '1px solid #ef9a9a' }}>
+          🚫 ACCOUNT DISABLED - Data syncing is locked. You are viewing cached data.
+        </div>
+      )}
+      {!isDisabled && excelMissing && (
+        <div style={{ padding: '15px', backgroundColor: '#ffebee', color: '#c62828', borderRadius: '8px', marginBottom: '20px', fontSize: '15px', textAlign: 'center', fontWeight: 'bold', border: '1px solid #ef9a9a' }}>
+          🚨 FILE MISSING OR DELETED - Data syncing is paused. You are viewing cached data.
+        </div>
+      )}
+
+      {/* 3. TOP SUMMARY CARDS */}
+      <div style={{ display: 'flex', gap: '20px', marginBottom: '40px', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 250px', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '10px', border: '1px solid #e0e0e0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ fontSize: '13px', color: '#666', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '8px' }}>Active Account</div>
+          <div style={{ fontSize: '18px', color: '#333', fontWeight: 'bold', wordBreak: 'break-all' }}>{accountName}</div>
+        </div>
+        <div style={{ flex: '1 1 250px', padding: '20px', backgroundColor: '#fff9c4', borderRadius: '10px', border: '1px solid #ffe082', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ fontSize: '13px', color: '#f57f17', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '8px' }}>Total Monthly Hours</div>
+          <div style={{ fontSize: '24px', color: getMonthColor(monthlyDecimalHrs), fontWeight: 'bold' }}>{monthlyTotalStr}</div>
+        </div>
+        <div style={{ flex: '1 1 250px', padding: '20px', backgroundColor: '#f3e5f5', borderRadius: '10px', border: '1px solid #e1bee7', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ fontSize: '13px', color: '#7b1fa2', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '8px' }}>Estimated Payment</div>
+          <div style={{ fontSize: '24px', color: '#4a148c', fontWeight: 'bold' }}>₹{totalPayment}</div>
+        </div>
+      </div>
+
+      {/* 4. Weekly Tables */}
+      <div style={{ overflowX: 'auto', opacity: isDisabled || excelMissing ? 0.8 : 1 }}>
+        <h4 style={{ margin: '0 0 15px 0', color: '#555', borderBottom: '2px solid #eee', paddingBottom: '10px', fontSize: '16px' }}>Weekly Breakdown</h4>
         
         {weeks.map((week, wIndex) => {
-          const activeColor = weekColors[wIndex % weekColors.length];
+          const rawWeekTime = getWeekRawTime(week);
+          const dynamicWeekColor = getWeekColor(rawWeekTime.mints, rawWeekTime.scnds);
           
           return (
-            <div key={`week-${wIndex}`} style={{ marginBottom: '40px' }}>
+            <div key={`week-${wIndex}`} style={{ marginBottom: '35px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e0e0e0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
               <table style={tableStyle}>
+                
                 <thead>
                   <tr>
-                    <th style={{ ...cellStyle, border: 'none', minWidth: '120px' }}></th>
-                    {week.map((day, dIndex) => (
-                      <th key={`date-${wIndex}-${dIndex}`} colSpan="2" style={{ ...cellStyle, backgroundColor: activeColor, minWidth: '80px', padding: '10px 4px' }}>
-                        <div style={{ fontSize: '11px', textTransform: 'uppercase', color: day ? '#555' : '#aaa', letterSpacing: '1px', marginBottom: '4px' }}>{dayNames[dIndex]}</div>
-                        <div style={{ fontSize: '14px', color: '#333' }}>{day ? day.date : '-'}</div>
-                      </th>
-                    ))}
-                    <th rowSpan="2" style={{ ...cellStyle, backgroundColor: '#c8e6c9', fontSize: '14px', fontWeight: 'bold' }}>Week {wIndex + 1} Hrs</th>
+                    {week.map((day, dIndex) => {
+                      // 💡 ALTERNATING LOGIC: Even columns are slightly darker to create a column effect
+                      const headBg = dIndex % 2 === 0 ? '#f8f9fa' : '#f1f3f5';
+                      return (
+                        <th key={`date-${wIndex}-${dIndex}`} colSpan="2" style={{ ...cellStyle, backgroundColor: headBg, minWidth: '90px', padding: '12px 4px', borderBottom: '2px solid #e0e0e0' }}>
+                          <div style={{ fontSize: '12px', textTransform: 'uppercase', color: day ? '#555' : '#aaa', letterSpacing: '1px', marginBottom: '4px' }}>{dayNames[dIndex]}</div>
+                          <div style={{ fontSize: '15px', color: '#333' }}>{day ? day.date : '-'}</div>
+                        </th>
+                      );
+                    })}
+                    <th rowSpan="2" style={{ ...cellStyle, backgroundColor: '#e8f5e9', fontSize: '15px', fontWeight: 'bold', borderLeft: '2px solid #e0e0e0', color: '#2e7d32' }}>
+                      Week {wIndex + 1} Total
+                    </th>
                   </tr>
                   <tr>
-                    {/* 💡 THE FIX: Only show Account Name header on Week 1. Hide the box completely on other weeks. */}
-                    <th style={{ 
-                      ...cellStyle, 
-                      backgroundColor: wIndex === 0 ? '#ffca28' : 'transparent', 
-                      padding: '12px', 
-                      fontSize: '14px',
-                      border: wIndex === 0 ? '1px solid #b3e5fc' : 'none' 
-                    }}>
-                      {wIndex === 0 ? 'Account Name' : ''}
-                    </th>
-                    {week.map((day, dIndex) => (
-                      <React.Fragment key={`subhead-${wIndex}-${dIndex}`}>
-                        <th style={{ ...cellStyle, backgroundColor: '#fff', fontSize: '13px', fontWeight: 'bold', color: '#666' }}>mints</th>
-                        <th style={{ ...cellStyle, backgroundColor: '#fff', fontSize: '13px', fontWeight: 'bold', color: '#666' }}>Scnds</th>
-                      </React.Fragment>
-                    ))}
+                    {week.map((day, dIndex) => {
+                      // 💡 ALTERNATING LOGIC for the subheaders
+                      const subHeadBg = dIndex % 2 === 0 ? '#ffffff' : '#f8f9fa';
+                      return (
+                        <React.Fragment key={`subhead-${wIndex}-${dIndex}`}>
+                          <th style={{ ...cellStyle, backgroundColor: subHeadBg, fontSize: '12px', fontWeight: 'bold', color: '#888', borderTop: 'none' }}>MINS</th>
+                          <th style={{ ...cellStyle, backgroundColor: subHeadBg, fontSize: '12px', fontWeight: 'bold', color: '#888', borderTop: 'none' }}>SECS</th>
+                        </React.Fragment>
+                      );
+                    })}
                   </tr>
                 </thead>
                 
                 <tbody>
                   <tr>
-                    {/* 💡 THE FIX: Only show the email address on Week 1. Hide the box completely on other weeks. */}
-                    <td style={{ 
-                      ...cellStyle, 
-                      fontSize: '14px', 
-                      fontWeight: 'bold', 
-                      color: '#333',
-                      border: wIndex === 0 ? '1px solid #b3e5fc' : 'none'
-                    }}>
-                      {wIndex === 0 ? accountName : ''}
-                    </td>
-                    {week.map((day, dIndex) => (
-                      <React.Fragment key={`input-${wIndex}-${dIndex}`}>
-                        <td style={{ ...cellStyle, padding: 0, backgroundColor: day ? '#fff' : '#f5f5f5' }}>
-                          {day && <div style={valueStyle}>{day.totalMints || ''}</div>}
-                        </td>
-                        <td style={{ ...cellStyle, padding: 0, backgroundColor: day ? '#fff' : '#f5f5f5' }}>
-                          {day && <div style={valueStyle}>{day.totalScnds || ''}</div>}
-                        </td>
-                      </React.Fragment>
-                    ))}
-                    <td style={{ ...cellStyle, backgroundColor: '#ffe0b2', fontWeight: 'bold', fontSize: '14px', color: '#d84315' }}>
+                    {week.map((day, dIndex) => {
+                      // 💡 ALTERNATING LOGIC for the actual data cells
+                      const activeCellBg = dIndex % 2 === 0 ? '#ffffff' : '#f8f9fa';
+                      const emptyCellBg = dIndex % 2 === 0 ? '#fcfcfc' : '#f1f3f5';
+                      const cellBgColor = day ? activeCellBg : emptyCellBg;
+                      
+                      return (
+                        <React.Fragment key={`input-${wIndex}-${dIndex}`}>
+                          <td style={{ ...cellStyle, padding: '15px 0', backgroundColor: cellBgColor }}>
+                            {day && <div style={valueStyle}>{day.totalMints > 0 ? day.totalMints : ''}</div>}
+                          </td>
+                          <td style={{ ...cellStyle, padding: '15px 0', backgroundColor: cellBgColor }}>
+                            {day && <div style={valueStyle}>{day.totalScnds > 0 ? day.totalScnds : ''}</div>}
+                          </td>
+                        </React.Fragment>
+                      );
+                    })}
+                    {/* Weekly Total Box */}
+                    <td style={{ ...cellStyle, backgroundColor: '#f1f8e9', fontWeight: 'bold', fontSize: '15px', color: dynamicWeekColor, borderLeft: '2px solid #e0e0e0' }}>
                       {getWeekTotal(week)}
                     </td>
                   </tr>
                 </tbody>
+
               </table>
             </div>
           );
         })}
-
-        <div style={{ marginTop: '10px', padding: '20px', backgroundColor: '#fafafa', borderRadius: '8px', border: '2px solid #eee', display: 'inline-block' }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#555', borderBottom: '1px solid #ddd', paddingBottom: '10px' }}>Monthly Totals</h4>
-          <table style={{ borderCollapse: 'collapse', textAlign: 'left' }}>
-            <tbody>
-              <tr>
-                <td style={{ padding: '8px 20px 8px 0', color: '#4caf50', fontStyle: 'italic', fontSize: '15px' }}>this month payment</td>
-                <td style={{ padding: '8px 0', color: '#9c27b0', fontSize: '20px', fontWeight: 'bold' }}>₹{totalPayment}</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px 20px 8px 0', color: '#9c27b0', fontStyle: 'italic', fontSize: '15px' }}>monthly hrs</td>
-                <td style={{ padding: '8px 0', color: '#d32f2f', fontStyle: 'italic', fontSize: '18px', fontWeight: 'bold' }}>{monthlyTotalStr}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
       </div>
     </div>
   );

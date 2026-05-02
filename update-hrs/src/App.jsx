@@ -17,9 +17,12 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null); 
   const [userRole, setUserRole] = useState(null);       
   const [userSheetId, setUserSheetId] = useState(null); 
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true); 
+  
+  // 💡 NEW: States to track if the current user's personal account is locked
+  const [isUserDisabled, setIsUserDisabled] = useState(false);
+  const [isExcelMissing, setIsExcelMissing] = useState(false);
 
-  // 💡 TABS: 'admin', 'assignments', 'team', or 'personal'
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true); 
   const [activeTab, setActiveTab] = useState('personal'); 
 
   const [currentDate, setCurrentDate] = useState(new Date()); 
@@ -32,10 +35,15 @@ function App() {
       if (user) {
         setCurrentUser(user.email);
         const userDoc = await getDoc(doc(db, 'users', user.email));
+        
         if (userDoc.exists()) {
-          const role = userDoc.data().role;
+          const data = userDoc.data();
+          const role = data.role;
           setUserRole(role);
-          setUserSheetId(userDoc.data().sheetId || null);
+          setUserSheetId(data.sheetId || null);
+          
+          // 💡 NEW: Instantly lock the personal UI if Firebase says they are disabled
+          setIsUserDisabled(data.isDisabled || false);
           
           // Smart default routing based on their role
           if (role === 'admin') setActiveTab('admin');
@@ -46,6 +54,8 @@ function App() {
         setCurrentUser(null);
         setUserRole(null);
         setUserSheetId(null);
+        setIsUserDisabled(false);
+        setIsExcelMissing(false);
       }
       setIsCheckingAuth(false);
     });
@@ -54,23 +64,34 @@ function App() {
 
   const getMonthKey = (dateObj) => `${monthNames[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
   
-  // Check if they have a valid sheet ID assigned to them
   const hasSheet = userSheetId && userSheetId.length > 5 && userSheetId !== 'MASTER_ADMIN';
 
   const fetchData = async () => {
-    // Only fetch personal data if they are on their personal tab and have a sheet
     if (!currentUser || !hasSheet || activeTab !== 'personal') return; 
     
+    // 💡 NEW: If Firebase already flagged them as disabled, don't even bother the server
+    if (isUserDisabled) return;
+
     setIsLoading(true);
     setStatus({ type: 'info', message: 'Syncing Data...' });
+    
     try {
       const response = await fetch(`http://localhost:5000/api/get-hrs?accountName=${currentUser}&monthKey=${getMonthKey(currentDate)}&sheetId=${userSheetId}`);
       const data = await response.json();
-      if (response.ok) {
-        setGridData(data.gridData); 
-        setStatus({ type: '', message: '' });
+      
+      // 💡 NEW: Catch the locks sent from the backend API!
+      if (response.status === 403 || data.error === 'DISABLED') {
+          setIsUserDisabled(true);
+          setStatus({ type: 'error', message: 'Account is disabled. Syncing paused.' });
+      } else if (response.status === 404 || data.error === 'SHEET_MISSING') {
+          setIsExcelMissing(true);
+          setStatus({ type: 'error', message: 'Missing Google Sheet. Syncing paused.' });
+      } else if (response.ok) {
+          setGridData(data.gridData); 
+          setIsExcelMissing(false); // Clear the missing flag if we found it!
+          setStatus({ type: '', message: '' });
       } else {
-        setStatus({ type: 'error', message: data.error });
+          setStatus({ type: 'error', message: data.error });
       }
     } catch (error) {
       setStatus({ type: 'error', message: 'Server connection failed.' });
@@ -81,7 +102,8 @@ function App() {
 
   useEffect(() => {
     fetchData();
-  }, [currentUser, currentDate, userSheetId, activeTab]);
+  // eslint-disable-next-line
+  }, [currentUser, currentDate, userSheetId, activeTab, isUserDisabled]);
 
   const changeMonth = (offset) => {
     const newDate = new Date(currentDate);
@@ -100,37 +122,30 @@ function App() {
   return (
     <div style={{ width: '100vw', maxWidth: '100%', height: '100vh', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', fontFamily: 'Arial, sans-serif', backgroundColor: '#f0f2f5', position: 'absolute', top: 0, left: 0 }}>
       
-      {/* 💡 UNIFIED HEADER */}
       <div style={{ backgroundColor: '#fff', padding: '15px 30px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <h2 style={{ margin: 0, color: '#1a73e8' }}>Telus Rater Hub</h2>
           
-          {/* TAB NAVIGATION */}
           <div style={{ display: 'flex', gap: '10px', marginLeft: '20px' }}>
-          {/* Admin Only Tabs */}
             {userRole === 'admin' && (
               <>
                 <button onClick={() => setActiveTab('admin')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'admin' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'admin' ? 'white' : '#555' }}>Accounts</button>
                 <button onClick={() => setActiveTab('assignments')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'assignments' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'assignments' ? 'white' : '#555' }}>Assign Teams</button>
-                {/* 💡 NEW TAB: */}
                 <button onClick={() => setActiveTab('billing')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'billing' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'billing' ? 'white' : '#555' }}>Billing & Rates</button>
               </>
             )}
             
-            {/* Leader / Co-Admin / Admin Tab */}
             {(userRole === 'admin' || userRole === 'leader' || userRole === 'co-admin') && (
               <button onClick={() => setActiveTab('team')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'team' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'team' ? 'white' : '#555' }}>Team Viewer</button>
             )}
 
-            {/* Anyone with a Sheet Tab */}
             {hasSheet && (
               <button onClick={() => setActiveTab('personal')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'personal' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'personal' ? 'white' : '#555' }}>My Data Entry</button>
             )}
           </div>
         </div>
 
-        {/* LOGOUT AREA */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontWeight: 'bold', color: '#333' }}>{currentUser}</div>
@@ -146,7 +161,6 @@ function App() {
         </div>
       )}
 
-      {/* 💡 DYNAMIC CONTENT RENDERING */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         
         {activeTab === 'admin' && (
@@ -155,7 +169,6 @@ function App() {
           </div>
         )}
 
-        {/* 💡 YOU WERE MISSING THIS BLOCK RIGHT HERE! */}
         {activeTab === 'assignments' && (
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <TeamAssignments />
@@ -182,16 +195,29 @@ function App() {
           <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
             <CalendarPanel 
               accountName={currentUser} 
-              sheetId={userSheetId} /* 💡 FIX: Changed from spreadsheetId to userSheetId! */
+              sheetId={userSheetId} 
               currentDate={currentDate}
               changeMonth={changeMonth}
               gridData={gridData}
               fetchData={fetchData}
               isLoading={isLoading}
               setStatus={setStatus}
+              
+              // 💡 NEW: Passing the safety locks down!
+              isDisabled={isUserDisabled}
+              excelMissing={isExcelMissing}
             />
             <div style={{ flex: 1, padding: '20px', overflowY: 'auto' }}>
-              <Dashboard gridData={gridData} isLoading={isLoading} accountName={currentUser} spreadsheetId={userSheetId} />
+              <Dashboard 
+                gridData={gridData} 
+                isLoading={isLoading} 
+                accountName={currentUser} 
+                spreadsheetId={userSheetId} 
+                
+                // 💡 NEW: Passing the safety locks down!
+                isDisabled={isUserDisabled}
+                excelMissing={isExcelMissing}
+              />
             </div>
           </div>
         )}
