@@ -3,7 +3,8 @@ import { collection, onSnapshot, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase';
 import TeamViewerHeader from './TeamViewerHeader';
 import PayrollTable from './PayrollTable';
-import CustomAlert from './CustomAlert'; // 💡 Custom Alert Imported
+import CustomAlert from './CustomAlert'; 
+import PayoutSummary from './PayoutSummary';
 
 export default function TeamViewer({ currentUserEmail, userRole, currentDate, changeMonth, getMonthKey }) {
   const [allUsers, setAllUsers] = useState([]);
@@ -12,15 +13,27 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
   
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const [syncTrigger, setSyncTrigger] = useState(0);
   const [exchangeRate, setExchangeRate] = useState(90);
 
-  // Tracks which accounts need a new sheet created
   const [missingSheets, setMissingSheets] = useState({});
 
   const isFetchingRef = useRef(false);
 
-  // 💡 NEW: Custom Alert State
   const [alertConfig, setAlertConfig] = useState({
     isOpen: false, title: '', message: '', type: 'info', onConfirm: null, onCancel: null
   });
@@ -43,7 +56,6 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
   const showRaterPay = isAdmin || userRole === 'leader';
   const showLeaderProfit = isAdmin; 
 
-  // 💡 NEW: Custom Alert Helpers
   const closeAlert = () => setAlertConfig(prev => ({ ...prev, isOpen: false }));
 
   const showAlert = (title, message, type = 'info') => {
@@ -132,15 +144,12 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
       email: account.email, name: account.email.split('@')[0], sheetId: account.sheetId, company: b.company || 'Unknown',
       role: account.role, clientName: account.clientName || '', coAdminName: account.coAdminName || '', 
       leaderName: account.leaderName || '', hasLeader, displayLeaderName, excelMissing,
-      
-      isDisabled: account.isDisabled || false, // 💡 ADD THIS LINE
-
+      isDisabled: account.isDisabled || false, 
       weeklyTotals, monthMints, monthScnds, decimalHours, hitTarget, clientRateUSD, clientPaymentUSD, clientRateINR, clientPaymentINR, 
       finalLeaderRate, leaderPayment, finalRaterRate, raterPayment, leaderMarginTotal: leaderPayment - raterPayment, coAdminProfit: clientPaymentINR - leaderPayment 
     };
   }, [allUsers, exchangeRate]);
 
-  // INSTANT LOAD FROM DB (MERGE MODE)
   const loadFromDatabase = useCallback(async () => {
     if (!selectedManager || teamAccounts.length === 0) return;
     
@@ -156,7 +165,6 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
 
     const instantRows = await Promise.all(dbPromises);
     
-    // 💡 THE FIX: Safely merge newly discovered accounts onto the screen instantly
     setTeamData(prevData => {
       const newArray = [...prevData];
       instantRows.forEach(row => {
@@ -168,10 +176,9 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
 
     setIsInitialLoad(false);
   }, [selectedManager, currentMonthKey, teamAccounts, buildRowData]);
-  // BACKGROUND SYNC (Catches the 404 Error from Backend)
-  // BACKGROUND SYNC (Catches the 404 Error from Backend)
+
   const syncWithExcel = useCallback(async () => {
-    if (!selectedManager || teamAccounts.length === 0 || isFetchingRef.current) return;
+    if (isOffline || !selectedManager || teamAccounts.length === 0 || isFetchingRef.current) return;
     
     isFetchingRef.current = true; 
     setIsSyncingSheets(true);
@@ -193,8 +200,6 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
           const docId = `${account.email}_${currentMonthKey}`;
           const docRef = doc(db, 'monthly_timesheets', docId);
 
-          // 💡 THE NEW FIX: If the account is disabled in Firebase, skip Excel completely!
-          // We just load whatever is currently saved in the database and freeze it.
           if (account.isDisabled) {
              const snap = await getDoc(docRef);
              if (snap.exists()) {
@@ -210,7 +215,6 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
             let data;
             try { data = await response.json(); } catch (e) { throw new Error("API Parse Error"); }
 
-            // Check for the new Disabled lock from the backend
             if (response.status === 403 || data.error === 'DISABLED') {
                throw new Error("DISABLED");
             }
@@ -256,7 +260,6 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
                setMissingSheets(prev => ({ ...prev, [account.email]: true }));
             }
 
-            // Fallback to DB safely
             const snap = await getDoc(docRef);
             if (snap.exists() && snap.data().weeklyTotals) {
                if (error.message === "SHEET_MISSING") {
@@ -288,7 +291,7 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
   // eslint-disable-next-line
   }, [selectedManager, currentMonthKey, teamAccounts, buildRowData]);
 
- useEffect(() => {
+  useEffect(() => {
     if (allUsers.length === 0) return;
 
     if (!selectedManager || teamAccounts.length === 0) {
@@ -298,7 +301,6 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
     }
 
     const runSequence = async () => {
-      // 💡 THE FIX: Always run the DB loader when the team changes to catch missing accounts!
       await loadFromDatabase(); 
       syncWithExcel(); 
     };
@@ -307,7 +309,6 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedManager, currentMonthKey, syncTrigger, teamAccounts.length, allUsers.length]);
 
-  // 💡 NEW: Custom Alert Restore Function
   const handleCreateNewSheet = (accountEmail, sheetId, restoreBackup = false) => {
     const actionText = restoreBackup ? "RESTORE from backup" : "create a BLANK sheet";
     
@@ -374,7 +375,6 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
         const adjustedRow = { ...row };
         adjustedRow.isOwnCoAdminAccount = row.email === managerProf.email;
         
-        // Pass missing state down to the table
         adjustedRow.needsNewSheet = !!missingSheets[row.email];
 
         const canCoAdminSelfRate = row.role !== 'leader' && !row.hasLeader;
@@ -449,6 +449,80 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
     coAdminProfit: rows.reduce((sum, r) => sum + r.coAdminProfit, 0)
   });
 
+  // 💡 FIXED: Here is the Math Engine required for the PayoutSummary component!
+// 💡 UPGRADED: Hierarchical Math Engine for Detailed Payouts
+  const payoutSummary = useMemo(() => {
+    const categories = {
+      'My Own Accounts': {},
+      'External Accounts': {}
+    };
+    let grandTotalPayout = 0;
+
+    Object.entries(groupedTeamData).forEach(([groupName, rows]) => {
+      if (groupName === 'Non-Profit Accounts') return;
+
+      const catKey = groupName === 'My Own Accounts' ? 'My Own Accounts' : 'External Accounts';
+
+      rows.forEach(row => {
+        // Exclude accounts where payments evaluate to 0 (like Co-Admin self-rated)
+        if (row.leaderPayment === 0 && row.raterPayment === 0) return;
+
+        // 1. Leader Payouts
+        if (row.hasLeader) {
+            if (row.leaderPayment > 0) {
+              const payeeName = row.displayLeaderName || "Unknown Leader";
+              const payeeKey = `LDR_${payeeName}`;
+
+              if (!categories[catKey][payeeKey]) {
+                categories[catKey][payeeKey] = { name: payeeName, role: 'Leader', totalPay: 0, accounts: [] };
+              }
+
+              categories[catKey][payeeKey].totalPay += row.leaderPayment;
+              categories[catKey][payeeKey].accounts.push({
+                accName: row.name,
+                hrs: row.decimalHours,
+                rate: row.finalLeaderRate,
+                pay: row.leaderPayment
+              });
+              grandTotalPayout += row.leaderPayment;
+            }
+        } else {
+        // 2. Direct Rater Payouts (No leader)
+            if (row.raterPayment > 0) {
+              const payeeName = row.name; 
+              const payeeKey = `RTR_${payeeName}`;
+
+              if (!categories[catKey][payeeKey]) {
+                categories[catKey][payeeKey] = { name: payeeName, role: 'Direct Rater', totalPay: 0, accounts: [] };
+              }
+
+              categories[catKey][payeeKey].totalPay += row.raterPayment;
+              categories[catKey][payeeKey].accounts.push({
+                accName: row.name,
+                hrs: row.decimalHours,
+                rate: row.finalRaterRate,
+                pay: row.raterPayment
+              });
+              grandTotalPayout += row.raterPayment;
+            }
+        }
+      });
+    });
+
+    const formattedData = [
+      {
+        category: 'My Own Accounts',
+        payees: Object.values(categories['My Own Accounts']).sort((a, b) => b.totalPay - a.totalPay)
+      },
+      {
+        category: 'External Accounts',
+        payees: Object.values(categories['External Accounts']).sort((a, b) => b.totalPay - a.totalPay)
+      }
+    ].filter(c => c.payees.length > 0); 
+
+    return { data: formattedData, grandTotalPayout };
+  }, [groupedTeamData]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#f8f9fa' }}>
       <TeamViewerHeader 
@@ -466,22 +540,32 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
         ) : teamData.length === 0 ? (
           <div style={{ textAlign: 'center', marginTop: '100px', color: '#888' }}>No assigned accounts found.</div>
         ) : (
-          <PayrollTable 
-            isCoAdmin={isCoAdmin} 
-            groupedTeamData={groupedTeamData} 
-            grandTotals={calcTotals(profitGeneratingData)} 
-            coAdminGroups={coAdminGroups} 
-            handleCoAdminGroupChange={handleCoAdminGroupChange} 
-            selfRatedMap={selfRatedMap} 
-            handleSelfRatedChange={handleSelfRatedChange}
-            showClientPay={showClientPay} showLeaderPay={showLeaderPay} showRaterPay={showRaterPay} 
-            showLeaderProfit={showLeaderProfit} calcTotals={calcTotals} 
-            handleCreateNewSheet={handleCreateNewSheet} 
-          />
+          <>
+            <PayrollTable 
+              isCoAdmin={isCoAdmin} 
+              groupedTeamData={groupedTeamData} 
+              grandTotals={calcTotals(profitGeneratingData)} 
+              coAdminGroups={coAdminGroups} 
+              handleCoAdminGroupChange={handleCoAdminGroupChange} 
+              selfRatedMap={selfRatedMap} 
+              handleSelfRatedChange={handleSelfRatedChange}
+              showClientPay={showClientPay} showLeaderPay={showLeaderPay} showRaterPay={showRaterPay} 
+              showLeaderProfit={showLeaderProfit} calcTotals={calcTotals} 
+              handleCreateNewSheet={handleCreateNewSheet} 
+              isOffline={isOffline}
+            />
+
+            {/* 💡 FIXED: The PayoutSummary Component is now safely inside the scrolling wrapper */}
+            {isCoAdmin && (
+              <PayoutSummary 
+             payoutSummaryData={payoutSummary.data} 
+                grandTotalPayout={payoutSummary.grandTotalPayout}
+              />
+            )}
+          </>
         )}
       </div>
 
-      {/* 💡 NEW: Custom Alert Rendered Here */}
       <CustomAlert 
         isOpen={alertConfig.isOpen}
         title={alertConfig.title}

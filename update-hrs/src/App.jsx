@@ -18,7 +18,9 @@ function App() {
   const [userRole, setUserRole] = useState(null);       
   const [userSheetId, setUserSheetId] = useState(null); 
   
-  // 💡 NEW: States to track if the current user's personal account is locked
+  // 💡 NEW: State to hold their specific assigned name (Bibin, Vivek, etc.)
+  const [userName, setUserName] = useState(''); 
+  
   const [isUserDisabled, setIsUserDisabled] = useState(false);
   const [isExcelMissing, setIsExcelMissing] = useState(false);
 
@@ -42,10 +44,13 @@ function App() {
           setUserRole(role);
           setUserSheetId(data.sheetId || null);
           
-          // 💡 NEW: Instantly lock the personal UI if Firebase says they are disabled
+          // 💡 NEW: Grab their specific name from the database based on their role
+          if (role === 'co-admin') setUserName(data.coAdminName || '');
+          else if (role === 'leader') setUserName(data.leaderName || '');
+          else setUserName(''); // Raters and Admins might not have a specific tagged name
+
           setIsUserDisabled(data.isDisabled || false);
           
-          // Smart default routing based on their role
           if (role === 'admin') setActiveTab('admin');
           else if (role === 'leader' || role === 'co-admin') setActiveTab('team');
           else setActiveTab('personal');
@@ -54,6 +59,7 @@ function App() {
         setCurrentUser(null);
         setUserRole(null);
         setUserSheetId(null);
+        setUserName('');
         setIsUserDisabled(false);
         setIsExcelMissing(false);
       }
@@ -69,7 +75,6 @@ function App() {
   const fetchData = async () => {
     if (!currentUser || !hasSheet || activeTab !== 'personal') return; 
     
-    // 💡 NEW: If Firebase already flagged them as disabled, don't even bother the server
     if (isUserDisabled) return;
 
     setIsLoading(true);
@@ -79,7 +84,6 @@ function App() {
       const response = await fetch(`http://localhost:5000/api/get-hrs?accountName=${currentUser}&monthKey=${getMonthKey(currentDate)}&sheetId=${userSheetId}`);
       const data = await response.json();
       
-      // 💡 NEW: Catch the locks sent from the backend API!
       if (response.status === 403 || data.error === 'DISABLED') {
           setIsUserDisabled(true);
           setStatus({ type: 'error', message: 'Account is disabled. Syncing paused.' });
@@ -88,7 +92,7 @@ function App() {
           setStatus({ type: 'error', message: 'Missing Google Sheet. Syncing paused.' });
       } else if (response.ok) {
           setGridData(data.gridData); 
-          setIsExcelMissing(false); // Clear the missing flag if we found it!
+          setIsExcelMissing(false); 
           setStatus({ type: '', message: '' });
       } else {
           setStatus({ type: 'error', message: data.error });
@@ -125,7 +129,7 @@ function App() {
       <div style={{ backgroundColor: '#fff', padding: '15px 30px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <h2 style={{ margin: 0, color: '#1a73e8' }}>Telus Rater Hub</h2>
+          <h2 style={{ margin: 0, color: '#1a73e8' }}>Hours Entry</h2>
           
           <div style={{ display: 'flex', gap: '10px', marginLeft: '20px' }}>
             {userRole === 'admin' && (
@@ -147,10 +151,15 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          
+          {/* 💡 NEW: Layout matches your image (Email bold on top, Role + Name below) */}
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 'bold', color: '#333' }}>{currentUser}</div>
-            <div style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase' }}>{userRole}</div>
+            <div style={{ fontWeight: 'bold', color: '#333', fontSize: '16px' }}>{currentUser}</div>
+            <div style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', marginTop: '2px' }}>
+              {userRole} {userName ? `• ${userName}` : ''}
+            </div>
           </div>
+
           <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#fdecea', color: '#d32f2f', border: '1px solid #ef9a9a', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Logout</button>
         </div>
       </div>
@@ -202,8 +211,6 @@ function App() {
               fetchData={fetchData}
               isLoading={isLoading}
               setStatus={setStatus}
-              
-              // 💡 NEW: Passing the safety locks down!
               isDisabled={isUserDisabled}
               excelMissing={isExcelMissing}
             />
@@ -213,8 +220,6 @@ function App() {
                 isLoading={isLoading} 
                 accountName={currentUser} 
                 spreadsheetId={userSheetId} 
-                
-                // 💡 NEW: Passing the safety locks down!
                 isDisabled={isUserDisabled}
                 excelMissing={isExcelMissing}
               />

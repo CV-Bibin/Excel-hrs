@@ -46,16 +46,16 @@ const headerGreyText = {
 
 const getWeekColor = (mints, scnds, isNonProfit) => {
   const hrs = mints / 60 + scnds / 3600;
-  if (hrs === 0) return isNonProfit ? "#e57373" : "#d32f2f"; 
-  if (hrs > 20) return isNonProfit ? "#64b5f6" : "#1976d2";  
-  return isNonProfit ? "#aaa" : "#333";                      
+  if (hrs === 0) return isNonProfit ? "#e57373" : "#d32f2f";
+  if (hrs > 20) return isNonProfit ? "#64b5f6" : "#1976d2";
+  return isNonProfit ? "#aaa" : "#333";
 };
 
 const getMonthColor = (decimalHours, isNonProfit) => {
-  if (decimalHours < 5) return isNonProfit ? "#e57373" : "#d32f2f";  
-  if (decimalHours > 40) return isNonProfit ? "#81c784" : "#2e7d32"; 
-  if (decimalHours > 20) return isNonProfit ? "#64b5f6" : "#1976d2"; 
-  return isNonProfit ? "#aaa" : "#333";                              
+  if (decimalHours < 5) return isNonProfit ? "#e57373" : "#d32f2f";
+  if (decimalHours > 40) return isNonProfit ? "#81c784" : "#2e7d32";
+  if (decimalHours > 20) return isNonProfit ? "#64b5f6" : "#1976d2";
+  return isNonProfit ? "#aaa" : "#333";
 };
 
 export default function PayrollTable({
@@ -71,7 +71,8 @@ export default function PayrollTable({
   showRaterPay,
   showLeaderProfit,
   calcTotals,
-  handleCreateNewSheet, 
+  handleCreateNewSheet,
+  isOffline
 }) {
   const coreGroups = {};
   let nonProfitRows = [];
@@ -84,24 +85,28 @@ export default function PayrollTable({
   });
 
   const renderCoAdminRow = (row, isNonProfit) => {
-    const isManuallySelfRated = selfRatedMap[row.email] && !row.isOwnCoAdminAccount;
-    const rowBgColor = row.isDisabled 
-      ? "#eeeeee" 
-      : (row.needsNewSheet || row.excelMissing
+    const isManuallySelfRated =
+      selfRatedMap[row.email] && !row.isOwnCoAdminAccount;
+    const rowBgColor = row.isDisabled
+      ? "#eeeeee"
+      : row.needsNewSheet || row.excelMissing
         ? "#ffebee"
         : isNonProfit
           ? "#fafafa"
           : isManuallySelfRated
             ? "#fffde7"
-            : "#fff");
-            
+            : "#fff";
+
     const textColor = isNonProfit ? "#888" : "#333";
     const monthColor = getMonthColor(row.decimalHours, isNonProfit);
 
     return (
       <tr
         key={row.email}
-        style={{ backgroundColor: rowBgColor, opacity: row.isDisabled ? 0.6 : (isNonProfit ? 0.85 : 1) }}
+        style={{
+          backgroundColor: rowBgColor,
+          opacity: row.isDisabled ? 0.6 : isNonProfit ? 0.85 : 1,
+        }}
       >
         <td style={cellStyle}>
           <a
@@ -114,13 +119,30 @@ export default function PayrollTable({
           </a>
         </td>
         <td style={{ ...cellStyle, textAlign: "left" }}>
-          <strong style={{ fontSize: "13px", color: textColor, textDecoration: row.isDisabled ? "line-through" : "none" }}>
+          <strong
+            style={{
+              fontSize: "13px",
+              color: textColor,
+              textDecoration: row.isDisabled ? "line-through" : "none",
+            }}
+          >
             {row.name}
           </strong>
-          
+
           {/* 💡 DISABLED BADGE */}
           {row.isDisabled && (
-            <span style={{ marginLeft: "6px", fontSize: "9px", color: "#d32f2f", fontWeight: "bold", backgroundColor: "#fce8e6", padding: "2px 4px", borderRadius: "3px", border: "1px solid #ef9a9a" }}>
+            <span
+              style={{
+                marginLeft: "6px",
+                fontSize: "9px",
+                color: "#d32f2f",
+                fontWeight: "bold",
+                backgroundColor: "#fce8e6",
+                padding: "2px 4px",
+                borderRadius: "3px",
+                border: "1px solid #ef9a9a",
+              }}
+            >
               🚫 DISABLED
             </span>
           )}
@@ -179,8 +201,14 @@ export default function PayrollTable({
               </span>
             )}
           </div>
-
-          {row.needsNewSheet ? (
+          
+          {/* 💡 SMART OFFLINE LOGIC */}
+          {isOffline ? (
+            <div style={{ marginTop: '6px', padding: '6px', backgroundColor: '#fff8e1', border: '1px solid #ffe082', borderRadius: '4px', textAlign: 'center' }}>
+              <div style={{ fontSize: '10px', color: '#f57f17', fontWeight: 'bold', marginBottom: '2px' }}>📶 APP OFFLINE</div>
+              <div style={{ fontSize: '9px', color: '#f57f17' }}>Showing Backup Data</div>
+            </div>
+          ) : row.needsNewSheet ? (
             <div
               style={{
                 marginTop: "6px",
@@ -240,25 +268,24 @@ export default function PayrollTable({
                 </button>
               </div>
             </div>
-          ) : (
-            row.excelMissing && (
-              <div
-                style={{
-                  marginTop: "4px",
-                  fontSize: "10px",
-                  color: "#c62828",
-                  fontWeight: "bold",
-                  backgroundColor: "#ffcdd2",
-                  display: "inline-block",
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  border: "1px solid #e53935",
-                }}
-              >
-                🚨 Offline - Showing Saved Data
-              </div>
-            )
-          )}
+          ) : row.excelMissing ? (
+            <div
+              style={{
+                marginTop: "4px",
+                fontSize: "10px",
+                color: "#c62828",
+                fontWeight: "bold",
+                backgroundColor: "#ffcdd2",
+                display: "inline-block",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                border: "1px solid #e53935",
+              }}
+            >
+              🚨 Sync Failed - Showing Saved Data
+            </div>
+          ) : null}
+
           {row.isAutoOwned ? (
             <div
               style={{
@@ -354,22 +381,76 @@ export default function PayrollTable({
               </label>
             )}
         </td>
-        <td style={{ ...cellStyle, color: getWeekColor(row.weeklyTotals[0].mints, row.weeklyTotals[0].scnds, isNonProfit) }}>
+        <td
+          style={{
+            ...cellStyle,
+            color: getWeekColor(
+              row.weeklyTotals[0].mints,
+              row.weeklyTotals[0].scnds,
+              isNonProfit,
+            ),
+          }}
+        >
           {formatHMS(row.weeklyTotals[0].mints, row.weeklyTotals[0].scnds)}
         </td>
-        <td style={{ ...cellStyle, color: getWeekColor(row.weeklyTotals[1].mints, row.weeklyTotals[1].scnds, isNonProfit) }}>
+        <td
+          style={{
+            ...cellStyle,
+            color: getWeekColor(
+              row.weeklyTotals[1].mints,
+              row.weeklyTotals[1].scnds,
+              isNonProfit,
+            ),
+          }}
+        >
           {formatHMS(row.weeklyTotals[1].mints, row.weeklyTotals[1].scnds)}
         </td>
-        <td style={{ ...cellStyle, color: getWeekColor(row.weeklyTotals[2].mints, row.weeklyTotals[2].scnds, isNonProfit) }}>
+        <td
+          style={{
+            ...cellStyle,
+            color: getWeekColor(
+              row.weeklyTotals[2].mints,
+              row.weeklyTotals[2].scnds,
+              isNonProfit,
+            ),
+          }}
+        >
           {formatHMS(row.weeklyTotals[2].mints, row.weeklyTotals[2].scnds)}
         </td>
-        <td style={{ ...cellStyle, color: getWeekColor(row.weeklyTotals[3].mints, row.weeklyTotals[3].scnds, isNonProfit) }}>
+        <td
+          style={{
+            ...cellStyle,
+            color: getWeekColor(
+              row.weeklyTotals[3].mints,
+              row.weeklyTotals[3].scnds,
+              isNonProfit,
+            ),
+          }}
+        >
           {formatHMS(row.weeklyTotals[3].mints, row.weeklyTotals[3].scnds)}
         </td>
-        <td style={{ ...cellStyle, color: getWeekColor(row.weeklyTotals[4].mints, row.weeklyTotals[4].scnds, isNonProfit) }}>
+        <td
+          style={{
+            ...cellStyle,
+            color: getWeekColor(
+              row.weeklyTotals[4].mints,
+              row.weeklyTotals[4].scnds,
+              isNonProfit,
+            ),
+          }}
+        >
           {formatHMS(row.weeklyTotals[4].mints, row.weeklyTotals[4].scnds)}
         </td>
-        <td style={{ ...cellStyle, color: getWeekColor(row.weeklyTotals[5].mints, row.weeklyTotals[5].scnds, isNonProfit) }}>
+        <td
+          style={{
+            ...cellStyle,
+            color: getWeekColor(
+              row.weeklyTotals[5].mints,
+              row.weeklyTotals[5].scnds,
+              isNonProfit,
+            ),
+          }}
+        >
           {formatHMS(row.weeklyTotals[5].mints, row.weeklyTotals[5].scnds)}
         </td>
         <td
@@ -377,7 +458,7 @@ export default function PayrollTable({
             ...cellStyle,
             backgroundColor: isNonProfit ? "#f0f8ff" : "#e3f2fd",
             color: monthColor,
-            fontWeight: "bold"
+            fontWeight: "bold",
           }}
         >
           {formatHMS(row.monthMints, row.monthScnds)}
@@ -705,40 +786,46 @@ export default function PayrollTable({
       }}
     >
       <thead>
-  <tr>
-    <th style={headerStyle}>Sheet</th>
-    <th style={{ ...headerGreen, textAlign: "left" }}>Account Details</th>
-    <th style={headerStyle}>week 1 hrs</th>
-    <th style={headerStyle}>week 2 hrs</th>
-    <th style={headerStyle}>week 3 hrs</th>
-    <th style={headerStyle}>week 4 hrs</th>
-    <th style={headerStyle}>week 5 hrs</th>
-    <th style={headerStyle}>week 6 hrs</th>
-    <th style={headerYellow}>Monthly Hrs</th>
-    <th style={headerGreyText}>decimal hrs</th>
-    {showClientPay && (
-      <>
-        <th style={headerGreyText}>Client Rate (₹)</th>
-        <th style={{ ...headerStyle, backgroundColor: "#bbdefb" }}>Client Total</th>
-      </>
-    )}
-    {showLeaderPay && (
-      <>
-        <th style={headerGreyText}>Leader Rate</th>
-        <th style={{ ...headerStyle, backgroundColor: "#e1bee7" }}>Leader Total</th>
-      </>
-    )}
-    {showRaterPay && (
-      <>
-        <th style={headerGreyText}>Rater Rate</th>
-        <th style={headerOrange}>Rater Total</th>
-      </>
-    )}
-    {showLeaderProfit && (
-      <th style={{ ...headerStyle, backgroundColor: "#e6f4ea" }}>Profit Margin</th>
-    )}
-  </tr>
-</thead>
+        <tr>
+          <th style={headerStyle}>Sheet</th>
+          <th style={{ ...headerGreen, textAlign: "left" }}>Account Details</th>
+          <th style={headerStyle}>week 1 hrs</th>
+          <th style={headerStyle}>week 2 hrs</th>
+          <th style={headerStyle}>week 3 hrs</th>
+          <th style={headerStyle}>week 4 hrs</th>
+          <th style={headerStyle}>week 5 hrs</th>
+          <th style={headerStyle}>week 6 hrs</th>
+          <th style={headerYellow}>Monthly Hrs</th>
+          <th style={headerGreyText}>decimal hrs</th>
+          {showClientPay && (
+            <>
+              <th style={headerGreyText}>Client Rate (₹)</th>
+              <th style={{ ...headerStyle, backgroundColor: "#bbdefb" }}>
+                Client Total
+              </th>
+            </>
+          )}
+          {showLeaderPay && (
+            <>
+              <th style={headerGreyText}>Leader Rate</th>
+              <th style={{ ...headerStyle, backgroundColor: "#e1bee7" }}>
+                Leader Total
+              </th>
+            </>
+          )}
+          {showRaterPay && (
+            <>
+              <th style={headerGreyText}>Rater Rate</th>
+              <th style={headerOrange}>Rater Total</th>
+            </>
+          )}
+          {showLeaderProfit && (
+            <th style={{ ...headerStyle, backgroundColor: "#e6f4ea" }}>
+              Profit Margin
+            </th>
+          )}
+        </tr>
+      </thead>
       <tbody>
         {Object.entries(coreGroups).map(([groupName, rows]) => {
           if (rows.length === 0) return null;
@@ -777,8 +864,12 @@ export default function PayrollTable({
                   <tr
                     key={row.email}
                     style={{
-                      backgroundColor: row.isDisabled ? "#eeeeee" : (row.needsNewSheet || row.excelMissing ? "#ffebee" : "#fff"),
-                      opacity: row.isDisabled ? 0.6 : 1
+                      backgroundColor: row.isDisabled
+                        ? "#eeeeee"
+                        : row.needsNewSheet || row.excelMissing
+                          ? "#ffebee"
+                          : "#fff",
+                      opacity: row.isDisabled ? 0.6 : 1,
                     }}
                   >
                     <td style={cellStyle}>
@@ -792,13 +883,32 @@ export default function PayrollTable({
                       </a>
                     </td>
                     <td style={{ ...cellStyle, textAlign: "left" }}>
-                      <strong style={{ fontSize: "14px", color: "#333", textDecoration: row.isDisabled ? "line-through" : "none" }}>
+                      <strong
+                        style={{
+                          fontSize: "14px",
+                          color: "#333",
+                          textDecoration: row.isDisabled
+                            ? "line-through"
+                            : "none",
+                        }}
+                      >
                         {row.name}
                       </strong>
-                      
+
                       {/* 💡 DISABLED BADGE */}
                       {row.isDisabled && (
-                        <span style={{ marginLeft: "6px", fontSize: "9px", color: "#d32f2f", fontWeight: "bold", backgroundColor: "#fce8e6", padding: "2px 4px", borderRadius: "3px", border: "1px solid #ef9a9a" }}>
+                        <span
+                          style={{
+                            marginLeft: "6px",
+                            fontSize: "9px",
+                            color: "#d32f2f",
+                            fontWeight: "bold",
+                            backgroundColor: "#fce8e6",
+                            padding: "2px 4px",
+                            borderRadius: "3px",
+                            border: "1px solid #ef9a9a",
+                          }}
+                        >
                           🚫 DISABLED
                         </span>
                       )}
@@ -837,7 +947,13 @@ export default function PayrollTable({
                         )}
                       </div>
 
-                      {row.needsNewSheet ? (
+                      {/* 💡 SMART OFFLINE LOGIC */}
+                      {isOffline ? (
+                        <div style={{ marginTop: '6px', padding: '6px', backgroundColor: '#fff8e1', border: '1px solid #ffe082', borderRadius: '4px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '10px', color: '#f57f17', fontWeight: 'bold', marginBottom: '2px' }}>📶 APP OFFLINE</div>
+                          <div style={{ fontSize: '9px', color: '#f57f17' }}>Showing Backup Data</div>
+                        </div>
+                      ) : row.needsNewSheet ? (
                         <div
                           style={{
                             marginTop: "6px",
@@ -861,7 +977,11 @@ export default function PayrollTable({
                           <div style={{ display: "flex", gap: "4px" }}>
                             <button
                               onClick={() =>
-                                handleCreateNewSheet(row.email, row.sheetId, false)
+                                handleCreateNewSheet(
+                                  row.email,
+                                  row.sheetId,
+                                  false,
+                                )
                               }
                               style={{
                                 flex: 1,
@@ -879,7 +999,11 @@ export default function PayrollTable({
                             </button>
                             <button
                               onClick={() =>
-                                handleCreateNewSheet(row.email, row.sheetId, true)
+                                handleCreateNewSheet(
+                                  row.email,
+                                  row.sheetId,
+                                  true,
+                                )
                               }
                               style={{
                                 flex: 1,
@@ -943,7 +1067,10 @@ export default function PayrollTable({
                           }
                           onChange={(e) => {
                             if (row.role !== "leader")
-                              handleSelfRatedChange(row.email, e.target.checked);
+                              handleSelfRatedChange(
+                                row.email,
+                                e.target.checked,
+                              );
                           }}
                           disabled={row.role === "leader"}
                           style={{
@@ -964,15 +1091,22 @@ export default function PayrollTable({
                           ...cellStyle,
                           backgroundColor:
                             i % 2 === 0 ? "#f8f9fa" : "transparent",
-                          color: getWeekColor(w.mints, w.scnds, false)
+                          color: getWeekColor(w.mints, w.scnds, false),
                         }}
                       >
                         {formatHMS(w.mints, w.scnds)}
                       </td>
                     ))}
-                   <td style={{ ...cellStyle, backgroundColor: '#fff9c4', color: monthColor, fontWeight: 'bold' }}>
-  {formatHMS(row.monthMints, row.monthScnds)}
-</td>
+                    <td
+                      style={{
+                        ...cellStyle,
+                        backgroundColor: "#fff9c4",
+                        color: monthColor,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {formatHMS(row.monthMints, row.monthScnds)}
+                    </td>
                     <td
                       style={{
                         ...cellStyle,
