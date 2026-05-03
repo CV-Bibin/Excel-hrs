@@ -13,6 +13,7 @@ import BillingSettings from './components/BillingSettings';
 import CoAdminSettings from './components/CoAdminSettings';
 
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null); 
@@ -82,7 +83,8 @@ function App() {
     setStatus({ type: 'info', message: 'Syncing Data...' });
     
     try {
-      const response = await fetch(`http://localhost:5000/api/get-hrs?accountName=${currentUser}&monthKey=${getMonthKey(currentDate)}&sheetId=${userSheetId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/api/get-hrs?accountName=${currentUser}&monthKey=${getMonthKey(currentDate)}&sheetId=${userSheetId}`);
       const data = await response.json();
       
       if (response.status === 403 || data.error === 'DISABLED') {

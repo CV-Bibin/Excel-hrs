@@ -3,6 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, firebaseConfig } from '../firebase'; 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function AdminPanel() {
   const [newEmail, setNewEmail] = useState('');
@@ -175,7 +176,7 @@ export default function AdminPanel() {
       // 2. Tell the Node.js backend to lock the Google Sheet
       if (user.sheetId && user.sheetId.length > 5) {
         try {
-           await fetch('http://localhost:5000/api/toggle-sheet-lock', {
+           await fetch('${API_BASE_URL}/api/toggle-sheet-lock', {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ sheetId: user.sheetId, lock: newStatus })

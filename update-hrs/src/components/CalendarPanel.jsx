@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function CalendarPanel({ 
   accountName, sheetId, currentDate, changeMonth, gridData, fetchData, isLoading, setStatus,
@@ -72,7 +73,7 @@ export default function CalendarPanel({
     }
 
     const isEdit = editingRowIndex !== null;
-    const url = isEdit ? 'http://localhost:5000/api/modify-hr' : 'http://localhost:5000/api/update-hrs';
+    const url = isEdit ? `${API_BASE_URL}/api/modify-hr` : `${API_BASE_URL}/api/update-hrs`;
     
     setStatus({ type: 'info', message: isEdit ? 'Updating entry...' : 'Adding entry...' });
 
@@ -113,7 +114,7 @@ export default function CalendarPanel({
     
     setStatus({ type: 'info', message: 'Deleting entry...' });
     try {
-      const response = await fetch('http://localhost:5000/api/modify-hr', {
+      const response = await fetch(`${API_BASE_URL}/api/modify-hr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

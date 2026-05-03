@@ -3,6 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { collection, doc, getDoc, setDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db, firebaseConfig } from '../firebase';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function CoAdminSettings({ currentUserEmail }) {
   // Global States
@@ -269,7 +270,7 @@ export default function CoAdminSettings({ currentUserEmail }) {
       await updateDoc(doc(db, 'users', user.email), { isDisabled: newStatus });
       if (user.sheetId && user.sheetId.length > 5) {
         try {
-           await fetch('http://localhost:5000/api/toggle-sheet-lock', {
+           await fetch(`${API_BASE_URL}/api/toggle-sheet-lock`, {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ sheetId: user.sheetId, lock: newStatus })

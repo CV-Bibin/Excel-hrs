@@ -5,6 +5,7 @@ import TeamViewerHeader from './TeamViewerHeader';
 import PayrollTable from './PayrollTable';
 import CustomAlert from './CustomAlert'; 
 import PayoutSummary from './PayoutSummary';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function TeamViewer({ currentUserEmail, userRole, currentDate, changeMonth, getMonthKey }) {
   const [allUsers, setAllUsers] = useState([]);
@@ -211,7 +212,8 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
           }
 
           try {
-            const response = await fetch(`http://localhost:5000/api/get-hrs?accountName=${account.email}&monthKey=${currentMonthKey}&sheetId=${account.sheetId}`);
+            
+            const response = await fetch(`${API_BASE_URL}/api/get-hrs?accountName=${account.email}&monthKey=${currentMonthKey}&sheetId=${account.sheetId}`);
             
             let data;
             try { data = await response.json(); } catch (e) { throw new Error("API Parse Error"); }
@@ -330,7 +332,7 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
         }
 
         try {
-          const res = await fetch('http://localhost:5000/api/create-sheet', {
+          const res = await fetch(`${API_BASE_URL}/api/create-sheet`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ accountName: accountEmail, sheetId, monthKey: currentMonthKey, backupData })
