@@ -115,7 +115,7 @@ export default function TeamViewer({ currentUserEmail, userRole, currentDate, ch
 
   useEffect(() => {
     // 300000 is 5 minutes. This saves your Firebase Write Quota!
-    const interval = setInterval(() => setSyncTrigger(prev => prev + 1), 300000);
+    const interval = setInterval(() => setSyncTrigger(prev => prev + 1), 150000);
     return () => clearInterval(interval);
   }, []);
 
