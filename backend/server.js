@@ -375,7 +375,7 @@ app.post('/api/admin/create-sheet', async (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 // ==========================================
-// 8. AUTOMATED MONTHLY SHEET GENERATOR
+// 8. SHEET LOCK ROUTE
 // ==========================================
 
 
@@ -436,7 +436,7 @@ app.get('/api/cron/create-month-tabs', async (req, res) => {
 
     const monthKey = `${monthNames[today.getMonth()]} ${today.getFullYear()}`;
 
-  const usersSnapshot = await firestore.collection('users').get();
+    const usersSnapshot = await firestore.collection('users').get();
 
 if (usersSnapshot.empty) {
   return res.status(200).json({ message: 'No users found' });
