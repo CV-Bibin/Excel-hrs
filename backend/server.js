@@ -327,39 +327,7 @@ app.post('/api/modify-hr', async (req, res) => {
   }
 });
 
-app.post('/api/modify-hr', async (req, res) => {
-  try {
-    const { monthKey, date, rowIndex, action, mints, scnds, sheetId } = req.body;
-    const doc = new GoogleSpreadsheet(sheetId, getAuth());
-    await doc.loadInfo();
-    
-    // 💡 FIX 4: Safety net added here too so editing/deleting doesn't crash!
-    const sheet = Object.values(doc.sheetsByTitle).find(s => s.title.toLowerCase() === monthKey.toLowerCase());
-    if (!sheet) return res.status(404).json({ error: `Could not find the sheet tab for ${monthKey}` });
 
-    try {
-        await sheet.loadCells('A1:CQ30');
-    } catch (cellError) {
-        return res.status(500).json({ error: 'Google Sheet template is too small.' });
-    }
-    
-    const [day, month, year] = date.split('/');
-    const targetCol = getColumnIndex(parseInt(day), parseInt(month)-1, parseInt(year));
-
-    if (action === 'delete') {
-        sheet.getCell(rowIndex, targetCol).value = null;
-        sheet.getCell(rowIndex, targetCol + 1).value = null;
-    } else if (action === 'edit') {
-        sheet.getCell(rowIndex, targetCol).value = mints !== '' ? Number(mints) : null;
-        sheet.getCell(rowIndex, targetCol + 1).value = scnds !== '' ? Number(scnds) : null;
-    }
-    await sheet.saveUpdatedCells();
-    res.status(200).json({ message: 'Modified!' });
-  } catch (error) {
-    console.error("❌ MODIFY CRASHED:", error.message);
-    res.status(500).json({ error: `Server failed: ${error.message}` });
-  }
-});
 
 // ==========================================
 // 6. ADMIN "GOD MODE" ROUTES
@@ -505,4 +473,78 @@ app.post('/api/toggle-sheet-lock', async (req, res) => {
 // ==========================================
 // 9. START THE SERVER
 // ==========================================
+app.get('/api/cron/create-month-tabs', async (req, res) => {
+  try {
+    const secret = req.headers.authorization?.replace('Bearer ', '');
+
+    if (secret !== process.env.CRON_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const istDateString = new Date().toLocaleString('en-US', {
+      timeZone: 'Asia/Kolkata'
+    });
+
+    const today = new Date(istDateString);
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const monthKey = `${monthNames[today.getMonth()]} ${today.getFullYear()}`;
+
+    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || 'excel-hrs';
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.documents) {
+      return res.status(200).json({
+        message: 'No users found',
+        firestoreResponse: data
+      });
+    }
+
+    const results = [];
+
+    for (const userDoc of data.documents) {
+      const accountEmail = userDoc.name.split('/').pop();
+      const fields = userDoc.fields || {};
+
+      const sheetId = fields.sheetId?.stringValue;
+      const isDisabled = fields.isDisabled?.booleanValue === true;
+
+      if (!sheetId || sheetId.length <= 5 || sheetId === 'MASTER_ADMIN' || isDisabled) {
+        continue;
+      }
+
+      try {
+        await autoBuildNewMonth(sheetId, monthKey, accountEmail);
+        results.push({ accountEmail, status: 'created_or_already_exists' });
+      } catch (err) {
+        results.push({
+          accountEmail,
+          status: 'failed',
+          error: err.message
+        });
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    res.status(200).json({
+      message: `Monthly tabs checked for ${monthKey}`,
+      count: results.length,
+      results
+    });
+  } catch (error) {
+    console.error('[CRON] Monthly tab creation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
