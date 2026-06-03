@@ -5,11 +5,31 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
-const { JWT } = require('google-auth-library'); 
+const { JWT } = require('google-auth-library');
+const admin = require('firebase-admin');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+const firebaseProjectId = process.env.VITE_FIREBASE_PROJECT_ID || 'excel-hrs';
+const firebaseClientEmail = process.env.VITE_FIREBASE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+const firebasePrivateKey = process.env.VITE_FIREBASE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY;
+
+if (!firebaseClientEmail || !firebasePrivateKey) {
+  throw new Error('Missing Firebase service account email or private key');
+}
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: firebaseProjectId,
+      clientEmail: firebaseClientEmail,
+      privateKey: firebasePrivateKey.replace(/\\n/g, '\n'),
+    }),
+  });
+}
+
+const firestore = admin.firestore();
 
 // ==========================================
 // 2. GOOGLE SHEETS AUTHENTICATION
@@ -32,26 +52,22 @@ const getColumnIndex = (day, monthIndex, year) => {
 // ==========================================
 async function getBillingData(accountEmail) {
   try {
-    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "excel-hrs"; 
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${accountEmail}`;
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    if (data && data.fields && data.fields.billing && data.fields.billing.mapValue && data.fields.billing.mapValue.fields) {
-      const b = data.fields.billing.mapValue.fields;
-      return {
-        // 💡 NOW USING THE NEW DATABASE VARIABLES
-        hasBonus: b.hasBonus ? b.hasBonus.booleanValue : false,
-        bonusTargetHours: b.bonusTargetHours ? Number(b.bonusTargetHours.integerValue || b.bonusTargetHours.doubleValue || 0) : 0,
-        raterRate: b.raterRate ? Number(b.raterRate.integerValue || b.raterRate.doubleValue || 0) : 0,
-        raterBonusRate: b.raterBonusRate ? Number(b.raterBonusRate.integerValue || b.raterBonusRate.doubleValue || 0) : 0
-      };
-    }
+    const snap = await firestore.collection('users').doc(accountEmail).get();
+
+    if (!snap.exists) return {};
+
+    const billing = snap.data().billing || {};
+
+    return {
+      hasBonus: billing.hasBonus || false,
+      bonusTargetHours: Number(billing.bonusTargetHours || 0),
+      raterRate: Number(billing.raterRate || 0),
+      raterBonusRate: Number(billing.raterBonusRate || 0),
+    };
   } catch (err) {
-    console.error("Error fetching billing info from Firestore:", err);
+    console.error('Error fetching billing info from Firestore:', err);
+    return {};
   }
-  return {};
 }
 
 // ==========================================
@@ -361,80 +377,6 @@ const PORT = process.env.PORT || 5000;
 // ==========================================
 // 8. AUTOMATED MONTHLY SHEET GENERATOR
 // ==========================================
-const cron = require('node-cron');
-
-// 💡 Schedule: Run at 18:00 (06:00 PM) every single day in India time.
-cron.schedule('0 18 * * *', async () => {
-    
-    // 💡 TIMEZONE FIX: Force the date calculation to use India Standard Time
-    // This prevents bugs if your online server is hosted in the US or Europe (UTC)
-    const istDateString = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
-    const today = new Date(istDateString);
-    
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    // Check if tomorrow is the 1st of the month (meaning today is the absolute last day)
-    if (tomorrow.getDate() === 1) {
-        console.log("⏰ [CRON] Last day of the month detected in IST! Starting Auto-Generation...");
-
-        // Calculate the string for NEXT month (e.g., "June 2026")
-        const nextMonthIndex = tomorrow.getMonth(); 
-        const nextYear = tomorrow.getFullYear();
-        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-        const nextMonthKey = `${monthNames[nextMonthIndex]} ${nextYear}`;
-
-        try {
-            // 1. Fetch all users from Firestore
-            const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "excel-hrs"; 
-            const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users`;
-            
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (!data.documents) {
-                console.log("⚠️ [CRON] No users found in database.");
-                return;
-            }
-
-            console.log(`🚀 [CRON] Found ${data.documents.length} accounts. Building sheets for ${nextMonthKey}...`);
-
-            // 2. Loop through every user and auto-build their sheet
-            for (const doc of data.documents) {
-                // Extract the email from the end of the Firebase document path
-                const accountEmail = doc.name.split('/').pop(); 
-                const fields = doc.fields || {};
-                
-                // Get the sheetId (checking if it exists and is a valid string)
-                const sheetId = fields.sheetId ? fields.sheetId.stringValue : null;
-
-                // Only generate if they have a real Google Sheet assigned
-                if (sheetId && sheetId.length > 5 && sheetId !== 'MASTER_ADMIN') {
-                    try {
-                        console.log(`⏳ Building for ${accountEmail}...`);
-                        // Call your existing Auto-Builder function!
-                        await autoBuildNewMonth(sheetId, nextMonthKey, accountEmail);
-                        console.log(`✅ Success: ${accountEmail}`);
-                    } catch (err) {
-                        console.error(`❌ Failed for ${accountEmail}:`, err.message);
-                    }
-                    
-                    // Add a tiny 2-second delay between creations so Google API doesn't rate-limit you
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                }
-            }
-            console.log(`🎉 [CRON] Monthly Auto-Generation Complete for ${nextMonthKey}!`);
-
-        } catch (error) {
-            console.error("🔥 [CRON] CRITICAL ERROR during automated generation:", error);
-        }
-    } else {
-        console.log(`[CRON] Today (${today.getDate()}) is not the last day of the month. Skipping generation.`);
-    }
-}, {
-    scheduled: true,
-    timezone: "Asia/Kolkata" 
-});
 
 
 app.post('/api/toggle-sheet-lock', async (req, res) => {
@@ -494,27 +436,20 @@ app.get('/api/cron/create-month-tabs', async (req, res) => {
 
     const monthKey = `${monthNames[today.getMonth()]} ${today.getFullYear()}`;
 
-    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || 'excel-hrs';
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users`;
+  const usersSnapshot = await firestore.collection('users').get();
 
-    const response = await fetch(url);
-    const data = await response.json();
+if (usersSnapshot.empty) {
+  return res.status(200).json({ message: 'No users found' });
+}
 
-    if (!data.documents) {
-      return res.status(200).json({
-        message: 'No users found',
-        firestoreResponse: data
-      });
-    }
+const results = [];
 
-    const results = [];
+for (const userDoc of usersSnapshot.docs) {
+  const accountEmail = userDoc.id;
+  const user = userDoc.data();
 
-    for (const userDoc of data.documents) {
-      const accountEmail = userDoc.name.split('/').pop();
-      const fields = userDoc.fields || {};
-
-      const sheetId = fields.sheetId?.stringValue;
-      const isDisabled = fields.isDisabled?.booleanValue === true;
+  const sheetId = user.sheetId;
+  const isDisabled = user.isDisabled === true;
 
       if (!sheetId || sheetId.length <= 5 || sheetId === 'MASTER_ADMIN' || isDisabled) {
         continue;
@@ -544,7 +479,6 @@ app.get('/api/cron/create-month-tabs', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
