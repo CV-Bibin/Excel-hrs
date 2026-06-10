@@ -415,6 +415,44 @@ app.post('/api/toggle-sheet-lock', async (req, res) => {
 // ==========================================
 // 9. START THE SERVER
 // ==========================================
+async function createMonthTabsJob(monthKey) {
+  const usersSnapshot = await firestore.collection('users').get();
+
+  if (usersSnapshot.empty) {
+    console.log('[CRON] No users found');
+    return;
+  }
+
+  const results = [];
+
+  for (const userDoc of usersSnapshot.docs) {
+    const accountEmail = userDoc.id;
+    const user = userDoc.data();
+
+    const sheetId = user.sheetId;
+    const isDisabled = user.isDisabled === true;
+
+    if (!sheetId || sheetId.length <= 5 || sheetId === 'MASTER_ADMIN' || isDisabled) {
+      continue;
+    }
+
+    try {
+      await autoBuildNewMonth(sheetId, monthKey, accountEmail);
+      results.push({ accountEmail, status: 'created_or_already_exists' });
+      console.log(`[CRON] Success: ${accountEmail}`);
+    } catch (err) {
+      results.push({
+        accountEmail,
+        status: 'failed',
+        error: err.message
+      });
+      console.error(`[CRON] Failed: ${accountEmail}`, err.message);
+    }
+  }
+
+  console.log(`[CRON] Finished monthly tabs for ${monthKey}`, results);
+}
+
 app.get('/api/cron/create-month-tabs', async (req, res) => {
   try {
     const secret = req.headers.authorization?.replace('Bearer ', '');
@@ -436,43 +474,13 @@ app.get('/api/cron/create-month-tabs', async (req, res) => {
 
     const monthKey = `${monthNames[today.getMonth()]} ${today.getFullYear()}`;
 
-    const usersSnapshot = await firestore.collection('users').get();
+    res.status(202).json({
+      message: `Monthly tab creation started for ${monthKey}`,
+      status: 'started'
+    });
 
-if (usersSnapshot.empty) {
-  return res.status(200).json({ message: 'No users found' });
-}
-
-const results = [];
-
-for (const userDoc of usersSnapshot.docs) {
-  const accountEmail = userDoc.id;
-  const user = userDoc.data();
-
-  const sheetId = user.sheetId;
-  const isDisabled = user.isDisabled === true;
-
-      if (!sheetId || sheetId.length <= 5 || sheetId === 'MASTER_ADMIN' || isDisabled) {
-        continue;
-      }
-
-      try {
-        await autoBuildNewMonth(sheetId, monthKey, accountEmail);
-        results.push({ accountEmail, status: 'created_or_already_exists' });
-      } catch (err) {
-        results.push({
-          accountEmail,
-          status: 'failed',
-          error: err.message
-        });
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    res.status(200).json({
-      message: `Monthly tabs checked for ${monthKey}`,
-      count: results.length,
-      results
+    createMonthTabsJob(monthKey).catch(error => {
+      console.error('[CRON] Background monthly tab creation failed:', error);
     });
   } catch (error) {
     console.error('[CRON] Monthly tab creation failed:', error);
