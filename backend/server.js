@@ -480,5 +480,31 @@ for (const userDoc of usersSnapshot.docs) {
   }
 });
 
+app.get('/api/debug/firestore-check', async (req, res) => {
+  try {
+    const secret = req.headers.authorization?.replace('Bearer ', '');
+
+    if (secret !== process.env.CRON_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const snapshot = await firestore.collection('users').limit(1).get();
+
+    res.status(200).json({
+      ok: true,
+      projectId: firebaseProjectId,
+      serviceAccountEmail: firebaseClientEmail,
+      usersFound: snapshot.size
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      projectId: firebaseProjectId,
+      serviceAccountEmail: firebaseClientEmail,
+      code: error.code,
+      message: error.message
+    });
+  }
+});
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
