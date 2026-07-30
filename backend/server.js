@@ -448,6 +448,7 @@ async function createMonthTabsJob(monthKey) {
       });
       console.error(`[CRON] Failed: ${accountEmail}`, err.message);
     }
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
 
   console.log(`[CRON] Finished monthly tabs for ${monthKey}`, results);
@@ -513,6 +514,13 @@ app.get('/api/debug/firestore-check', async (req, res) => {
       message: error.message
     });
   }
+});
+
+// ==========================================
+// 10. KEEP AWAKE PING ROUTE
+// ==========================================
+app.get('/', (req, res) => {
+  res.status(200).send('Render server is awake and running!');
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
