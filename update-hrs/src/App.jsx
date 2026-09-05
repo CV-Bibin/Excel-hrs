@@ -1,35 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from './firebase'; 
+import { auth, db } from './firebase';
 
 import Dashboard from './components/Dashboard';
 import CalendarPanel from './components/CalendarPanel';
-import Login from './components/Login'; 
-import AdminPanel from './components/AdminPanel'; 
-import TeamViewer from './components/TeamViewer'; 
-import TeamAssignments from './components/TeamAssignments'; 
+import Login from './components/Login';
+import AdminPanel from './components/AdminPanel';
+import TeamViewer from './components/TeamViewer';
+import TeamAssignments from './components/TeamAssignments';
 import BillingSettings from './components/BillingSettings';
 import CoAdminSettings from './components/CoAdminSettings';
+import RaterPerformance from './components/RaterPerformance';
 
 const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 function App() {
-  const [currentUser, setCurrentUser] = useState(null); 
-  const [userRole, setUserRole] = useState(null);       
-  const [userSheetId, setUserSheetId] = useState(null); 
-  
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userRole, setUserRole] = useState(null);
+  const [userSheetId, setUserSheetId] = useState(null);
+
   // 💡 NEW: State to hold their specific assigned name (Bibin, Vivek, etc.)
-  const [userName, setUserName] = useState(''); 
-  
+  const [userName, setUserName] = useState('');
+
   const [isUserDisabled, setIsUserDisabled] = useState(false);
   const [isExcelMissing, setIsExcelMissing] = useState(false);
 
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true); 
-  const [activeTab, setActiveTab] = useState('personal'); 
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [activeTab, setActiveTab] = useState('personal');
 
-  const [currentDate, setCurrentDate] = useState(new Date()); 
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [gridData, setGridData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
@@ -39,20 +40,20 @@ function App() {
       if (user) {
         setCurrentUser(user.email);
         const userDoc = await getDoc(doc(db, 'users', user.email));
-        
+
         if (userDoc.exists()) {
           const data = userDoc.data();
           const role = data.role;
           setUserRole(role);
           setUserSheetId(data.sheetId || null);
-          
+
           // 💡 NEW: Grab their specific name from the database based on their role
           if (role === 'co-admin') setUserName(data.coAdminName || '');
           else if (role === 'leader') setUserName(data.leaderName || '');
           else setUserName(''); // Raters and Admins might not have a specific tagged name
 
           setIsUserDisabled(data.isDisabled || false);
-          
+
           if (role === 'admin') setActiveTab('admin');
           else if (role === 'leader' || role === 'co-admin') setActiveTab('team');
           else setActiveTab('personal');
@@ -71,34 +72,34 @@ function App() {
   }, []);
 
   const getMonthKey = (dateObj) => `${monthNames[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
-  
+
   const hasSheet = userSheetId && userSheetId.length > 5 && userSheetId !== 'MASTER_ADMIN';
 
   const fetchData = async () => {
-    if (!currentUser || !hasSheet || activeTab !== 'personal') return; 
-    
+    if (!currentUser || !hasSheet || activeTab !== 'personal') return;
+
     if (isUserDisabled) return;
 
     setIsLoading(true);
     setStatus({ type: 'info', message: 'Syncing Data...' });
-    
+
     try {
-      
+
       const response = await fetch(`${API_BASE_URL}/api/get-hrs?accountName=${currentUser}&monthKey=${getMonthKey(currentDate)}&sheetId=${userSheetId}`);
       const data = await response.json();
-      
+
       if (response.status === 403 || data.error === 'DISABLED') {
-          setIsUserDisabled(true);
-          setStatus({ type: 'error', message: 'Account is disabled. Syncing paused.' });
+        setIsUserDisabled(true);
+        setStatus({ type: 'error', message: 'Account is disabled. Syncing paused.' });
       } else if (response.status === 404 || data.error === 'SHEET_MISSING') {
-          setIsExcelMissing(true);
-          setStatus({ type: 'error', message: 'Missing Google Sheet. Syncing paused.' });
+        setIsExcelMissing(true);
+        setStatus({ type: 'error', message: 'Missing Google Sheet. Syncing paused.' });
       } else if (response.ok) {
-          setGridData(data.gridData); 
-          setIsExcelMissing(false); 
-          setStatus({ type: '', message: '' });
+        setGridData(data.gridData);
+        setIsExcelMissing(false);
+        setStatus({ type: '', message: '' });
       } else {
-          setStatus({ type: 'error', message: data.error });
+        setStatus({ type: 'error', message: data.error });
       }
     } catch (error) {
       setStatus({ type: 'error', message: 'Server connection failed.' });
@@ -109,7 +110,7 @@ function App() {
 
   useEffect(() => {
     fetchData();
-  // eslint-disable-next-line
+    // eslint-disable-next-line
   }, [currentUser, currentDate, userSheetId, activeTab, isUserDisabled]);
 
   const changeMonth = (offset) => {
@@ -128,12 +129,12 @@ function App() {
 
   return (
     <div style={{ width: '100vw', maxWidth: '100%', height: '100vh', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', fontFamily: 'Arial, sans-serif', backgroundColor: '#f0f2f5', position: 'absolute', top: 0, left: 0 }}>
-      
+
       <div style={{ backgroundColor: '#fff', padding: '15px 30px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <h2 style={{ margin: 0, color: '#1a73e8' }}>Hours Entry</h2>
-          
+
           <div style={{ display: 'flex', gap: '10px', marginLeft: '20px' }}>
             {userRole === 'admin' && (
               <>
@@ -142,7 +143,7 @@ function App() {
                 <button onClick={() => setActiveTab('billing')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'billing' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'billing' ? 'white' : '#555' }}>Billing & Rates</button>
               </>
             )}
-            
+
             {(userRole === 'admin' || userRole === 'leader' || userRole === 'co-admin') && (
               <button onClick={() => setActiveTab('team')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'team' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'team' ? 'white' : '#555' }}>Team Viewer</button>
             )}
@@ -151,19 +152,36 @@ function App() {
               <button onClick={() => setActiveTab('personal')} style={{ padding: '8px 16px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: activeTab === 'personal' ? '#1a73e8' : '#f1f3f4', color: activeTab === 'personal' ? 'white' : '#555' }}>My Data Entry</button>
             )}
 
+            {(userRole === 'admin' || userRole === 'leader' || userRole === 'co-admin') && (
+              <button
+                onClick={() => setActiveTab('performance')}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '20px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  backgroundColor: activeTab === 'performance' ? '#1a73e8' : '#f1f3f4',
+                  color: activeTab === 'performance' ? 'white' : '#555'
+                }}
+              >
+                Performance
+              </button>
+            )}
+
             {/* 💡 MOVED TO THE END & CHANGED TO ICON */}
             {userRole === 'co-admin' && (
-              <button 
+              <button
                 title="Accounts & Settings"
-                onClick={() => setActiveTab('coadmin-settings')} 
-                style={{ 
-                  padding: '8px 14px', 
-                  border: 'none', 
-                  borderRadius: '20px', 
-                  cursor: 'pointer', 
-                  fontSize: '16px', 
-                  backgroundColor: activeTab === 'coadmin-settings' ? '#1a73e8' : '#f1f3f4', 
-                  color: activeTab === 'coadmin-settings' ? 'white' : '#555' 
+                onClick={() => setActiveTab('coadmin-settings')}
+                style={{
+                  padding: '8px 14px',
+                  border: 'none',
+                  borderRadius: '20px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  backgroundColor: activeTab === 'coadmin-settings' ? '#1a73e8' : '#f1f3f4',
+                  color: activeTab === 'coadmin-settings' ? 'white' : '#555'
                 }}
               >
                 ⚙️
@@ -173,7 +191,7 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          
+
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontWeight: 'bold', color: '#333', fontSize: '16px' }}>{currentUser}</div>
             <div style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', marginTop: '2px' }}>
@@ -192,10 +210,21 @@ function App() {
       )}
 
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        
+
         {activeTab === 'admin' && (
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <AdminPanel />
+          </div>
+        )}
+
+
+        {activeTab === 'performance' && (
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <RaterPerformance
+              currentUserEmail={currentUser}
+              userRole={userRole}
+              userName={userName}
+            />
           </div>
         )}
 
@@ -212,27 +241,27 @@ function App() {
           </div>
         )}
 
-       {activeTab === 'billing' && (
+        {activeTab === 'billing' && (
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <BillingSettings />
           </div>
         )}
-        
+
         {activeTab === 'team' && (
-          <TeamViewer 
-            currentUserEmail={currentUser} 
-            userRole={userRole} 
-            currentDate={currentDate} 
-            changeMonth={changeMonth} 
-            getMonthKey={getMonthKey} 
+          <TeamViewer
+            currentUserEmail={currentUser}
+            userRole={userRole}
+            currentDate={currentDate}
+            changeMonth={changeMonth}
+            getMonthKey={getMonthKey}
           />
         )}
 
-       {activeTab === 'personal' && (
+        {activeTab === 'personal' && (
           <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-            <CalendarPanel 
-              accountName={currentUser} 
-              sheetId={userSheetId} 
+            <CalendarPanel
+              accountName={currentUser}
+              sheetId={userSheetId}
               currentDate={currentDate}
               changeMonth={changeMonth}
               gridData={gridData}
@@ -243,11 +272,11 @@ function App() {
               excelMissing={isExcelMissing}
             />
             <div style={{ flex: 1, padding: '20px', overflowY: 'auto' }}>
-              <Dashboard 
-                gridData={gridData} 
-                isLoading={isLoading} 
-                accountName={currentUser} 
-                spreadsheetId={userSheetId} 
+              <Dashboard
+                gridData={gridData}
+                isLoading={isLoading}
+                accountName={currentUser}
+                spreadsheetId={userSheetId}
                 isDisabled={isUserDisabled}
                 excelMissing={isExcelMissing}
               />
